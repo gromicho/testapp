@@ -102,6 +102,12 @@ def _summarize_paths(day_paths):
 # Validation
 # ---------------------------------------------------------------------
 def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day):
+    """
+    Validate multi-day paths with:
+      - Boundary checks
+      - Max distance per day
+      - Turn angle ≤ 45 degrees between consecutive steps
+    """
     rows, cols = grid.shape
     visited = set()
     plastic_by_day = []
@@ -109,7 +115,7 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
     distance_by_day_steps = []
     current_dir = start_d
     prev_end = None
-    prev_dir = start_d
+    prev_dir_idx = DIR_TO_IDX[start_d]
 
     if not isinstance(day_paths, list):
         return False, "day_paths must be a list", [], [], []
@@ -135,6 +141,8 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
             plastic_today.append(int(grid[y0, x0]))
             visited.add((y0, x0))
 
+        last_dir_idx = prev_dir_idx
+
         for i in range(1, len(day)):
             y1, x1 = day[i]
             if not (0 <= y1 < rows and 0 <= x1 < cols):
@@ -142,11 +150,20 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
 
             dy, dx = y1 - y0, x1 - x0
             try:
-                idx = DIR_VECTORS.index((dy, dx))
+                dir_idx = DIR_VECTORS.index((dy, dx))
             except ValueError:
                 return False, f"Day {d} step {i} invalid move from {(y0, x0)} to {(y1, x1)}", [], [], []
 
-            step_len = STEP_LENGTH[idx]
+            # --- NEW: turning constraint (max 45 degrees) ---
+            diff = abs(dir_idx - last_dir_idx)
+            diff = min(diff, 8 - diff)  # wrap-around (e.g., 7 and 0 are adjacent)
+            if diff > 1:
+                return False, (
+                    f"Day {d} step {i} turns too sharply: {IDX_TO_DIR[last_dir_idx]} → {IDX_TO_DIR[dir_idx]} "
+                    f"({diff*45} degrees)"
+                ), [], [], []
+
+            step_len = STEP_LENGTH[dir_idx]
             if dist + step_len > max_distance_per_day:
                 return False, f"Day {d} exceeds distance {max_distance_per_day} at step {i}", [], [], []
 
@@ -158,15 +175,16 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
                 visited.add((y1, x1))
 
             y0, x0 = y1, x1
-            current_dir = IDX_TO_DIR[idx]
+            last_dir_idx = dir_idx
 
         prev_end = (y0, x0)
-        prev_dir = current_dir
+        prev_dir_idx = last_dir_idx
         plastic_by_day.append(plastic_today)
         distance_by_day.append(dist)
         distance_by_day_steps.append(steps)
 
     return True, "Path validated successfully", plastic_by_day, distance_by_day, distance_by_day_steps
+
 
 
 # ---------------------------------------------------------------------
