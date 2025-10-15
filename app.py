@@ -125,11 +125,11 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
             x1c, y1c = x1 + 0.5, y1 + 0.5
             xm, ym = (x0c + x1c) / 2, (y0c + y1c) / 2
 
-            # arrow to midpoint of next cell
+            # Arrow toward next cell
             ax.annotate("", xy=(xm, ym), xytext=(x0c, y0c),
                         arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=2)
 
-            # step number on origin cell
+            # Step number on origin cell
             move_counter += 1
             ax.text(x0c, y0c + 0.25, str(move_counter),
                     color="black", fontsize=8, ha="center", va="center", weight="bold",
@@ -137,7 +137,20 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
                     bbox=dict(boxstyle="round,pad=0.15",
                               facecolor="white", edgecolor=color, linewidth=0.8, alpha=0.9))
 
-            # plastic value on first visit of origin cell
+            # Rounded box on visited cells
+            linewidth = 3
+            rect = patches.FancyBboxPatch(
+                (x0, y0), 1, 1,
+                boxstyle="round,pad=0.002,rounding_size=0.15",
+                linewidth=linewidth,
+                edgecolor=color,
+                facecolor="none",
+                alpha=0.8,
+                zorder=3 + day_index
+            )
+            ax.add_patch(rect)
+
+            # Plastic value on first visit
             if (y0, x0) not in visited:
                 visited.add((y0, x0))
                 ax.text(x0 + 0.5, y0 + 0.5, str(grid[y0, x0]),
@@ -146,36 +159,45 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
                                   edgecolor=color, linewidth=1.5,
                                   facecolor="white", alpha=1), zorder=4)
 
-    # highlight start cell
+    # Start cell frame (green)
     y_start, x_start = day_paths[0][0]
-    rect = patches.FancyBboxPatch((x_start, y_start), 1, 1,
-                                  boxstyle="round,pad=0.002,rounding_size=0.15",
-                                  linewidth=3, edgecolor="green",
-                                  facecolor="none", alpha=0.8, zorder=10)
-    ax.add_patch(rect)
+    start_rect = patches.FancyBboxPatch(
+        (x_start, y_start), 1, 1,
+        boxstyle="round,pad=0.002,rounding_size=0.15",
+        linewidth=3, edgecolor="green",
+        facecolor="none", alpha=0.8, zorder=10
+    )
+    ax.add_patch(start_rect)
 
-    # --- NEW: ensure the final destination cell is annotated ---
+    # --- NEW: Last cell frame (thick colored border) ---
     last_day_index = len(day_paths) - 1
     last_color = day_color_map[last_day_index]
     last_y, last_x = day_paths[last_day_index][-1]
-    last_xc, last_yc = last_x + 0.5, last_y + 0.5
 
-    # show plastic value if not shown yet
+    end_rect = patches.FancyBboxPatch(
+        (last_x, last_y), 1, 1,
+        boxstyle="round,pad=0.002,rounding_size=0.15",
+        linewidth=9, edgecolor=last_color,
+        facecolor="none", alpha=0.8, zorder=12
+    )
+    ax.add_patch(end_rect)
+
+    # Ensure final cell is labeled
     if (last_y, last_x) not in visited:
-        ax.text(last_xc, last_yc, str(grid[last_y, last_x]),
+        ax.text(last_x + 0.5, last_y + 0.5, str(grid[last_y, last_x]),
                 ha="center", va="center", fontsize=10, color=last_color,
                 bbox=dict(boxstyle="round,pad=0.2",
                           edgecolor=last_color, linewidth=1.5,
                           facecolor="white", alpha=1), zorder=5)
 
-    # show the final move number on the final cell
-    ax.text(last_xc, last_yc + 0.25, str(move_counter),
+    # Step number on last cell
+    ax.text(last_x + 0.5, last_y + 0.5 + 0.25, str(move_counter),
             color="black", fontsize=8, ha="center", va="center", weight="bold",
             zorder=7,
             bbox=dict(boxstyle="round,pad=0.15",
                       facecolor="white", edgecolor=last_color, linewidth=0.8, alpha=0.9))
 
-    # title with plastic and distance totals (unchanged)
+    # Title with plastic and distance totals
     plastic_exprs = ["+".join(str(x) for x in p) for p in plastic_by_day if p]
     dist_exprs = ["+".join(str(x) for x in d) for d in distance_by_day_steps if d]
     plastic_total = sum(sum(p) for p in plastic_by_day)
@@ -185,7 +207,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     distance_line = f'{"distance":>13}: {" + ".join(dist_exprs)} = {distance_total}'
     ax.set_title(f"{plastic_line}\n{distance_line}", fontsize=12, family="monospace")
 
-    # export to PDF bytes
+    # Export to PDF bytes
     buf = BytesIO()
     plt.savefig(buf, format="pdf", bbox_inches="tight")
     buf.seek(0)
