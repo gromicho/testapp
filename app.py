@@ -186,7 +186,9 @@ def validate_day_paths(grid, day_paths, start_cell, start_d, max_days, max_dista
 # Draw final frame
 # ---------------------------------------------------------------------
 def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
-    fig, ax = plt.subplots(figsize=(6, 6))
+
+    fig, ax = plt.subplots(figsize=(10, 10))
+
     sns.heatmap(grid, ax=ax, cmap="YlGnBu", annot=True, fmt="d", cbar=False, square=True)
     ax.invert_yaxis()
 
