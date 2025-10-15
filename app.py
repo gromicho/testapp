@@ -105,9 +105,9 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
 
 
 # ---------------------------------------------------------------------
-# Draw final frame with totals on top
+# Draw final frame with totals and return both fig and PDF bytes
 # ---------------------------------------------------------------------
-def draw_last_frame_pdf(grid, day_paths, plastic_by_day, distance_by_day_steps):
+def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     fig, ax = plt.subplots(figsize=(6, 6))
     sns.heatmap(grid, ax=ax, cmap="YlGnBu", annot=True, fmt="d", cbar=False, square=True)
     ax.invert_yaxis()
@@ -149,7 +149,6 @@ def draw_last_frame_pdf(grid, day_paths, plastic_by_day, distance_by_day_steps):
     ax.add_patch(rect)
 
     # --- Title showing plastic and distance expressions ---
-    n_days = len(day_paths)
     plastic_exprs = ["+".join(str(x) for x in p) for p in plastic_by_day if p]
     dist_exprs = ["+".join(str(x) for x in d) for d in distance_by_day_steps if d]
     plastic_total = sum(sum(p) for p in plastic_by_day)
@@ -160,17 +159,20 @@ def draw_last_frame_pdf(grid, day_paths, plastic_by_day, distance_by_day_steps):
 
     ax.set_title(f"{plastic_line}\n{distance_line}", fontsize=12, family="monospace")
 
+    # Export to PDF bytes
     buf = BytesIO()
     plt.savefig(buf, format="pdf", bbox_inches="tight")
-    plt.close(fig)
     buf.seek(0)
-    return buf.getvalue()
+    pdf_bytes = buf.read()
+    buf.close()
+
+    return fig, pdf_bytes
 
 
 # ---------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------
-st.title("Validate and Plot Grid Path (Totals in Title)")
+st.title("Validate and Plot Grid Path (Inline + PDF Download)")
 
 example = '[[[0,0],[0,1],[0,2]], [[4,4],[4,5],[4,6]]]'
 path_str = st.text_area("Enter day_paths (list of lists of [y,x]):", example)
@@ -188,7 +190,8 @@ if st.button("Validate and Draw"):
         if ok:
             st.success("✅ Path valid")
             st.info(msg)
-            pdf_bytes = draw_last_frame_pdf(GRID, day_paths, plastic, dist_steps)
+            fig, pdf_bytes = draw_last_frame(GRID, day_paths, plastic, dist_steps)
+            st.pyplot(fig, clear_figure=True)
             st.download_button(
                 label="Download last frame as PDF",
                 data=pdf_bytes,
