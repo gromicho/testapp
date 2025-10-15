@@ -7,6 +7,8 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from io import BytesIO
+import re
+import ast
 
 # ---------------------------------------------------------------------
 # Hardcoded grid
@@ -34,7 +36,70 @@ IDX_TO_DIR = {v: k for k, v in DIR_TO_IDX.items()}
 
 
 # ---------------------------------------------------------------------
-# Enhanced validation with per-day plastic and distance
+# Tolerant parsing utilities
+# ---------------------------------------------------------------------
+def parse_day_paths(text):
+    """
+    Tolerant parser for grid paths.
+
+    Accepts:
+      - Proper Python lists/tuples: [[[0,0],[1,1]]] or [(0,0),(1,1)]
+      - Mixed () [] [](), extra commas, newlines, spaces
+      - Bare coordinates separated by spaces or newlines:
+            0,0  0,1  0,2
+            0,2  0,3  0,4
+    Returns:
+      (parsed_day_paths, summary_string)
+    """
+    s = text.strip()
+    if not s:
+        raise ValueError("Empty input.")
+
+    # 1. Try proper Python-like literal
+    try:
+        normalized = s.replace('(', '[').replace(')', ']')
+        obj = ast.literal_eval(normalized)
+        if isinstance(obj, tuple):
+            obj = [list(obj)]
+        if isinstance(obj, list) and all(isinstance(el, (list, tuple)) for el in obj):
+            # Detect single day
+            if all(isinstance(x, (int, float)) for x in obj[0]) and len(obj[0]) == 2:
+                obj = [obj]
+            parsed = [[tuple(map(int, step)) for step in day] for day in obj]
+            summary = _summarize_paths(parsed)
+            return parsed, summary
+    except Exception:
+        pass
+
+    # 2. Fallback: regex coordinate extraction
+    lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
+    all_days = []
+    coord_pattern = re.compile(r"(-?\d+)\s*[,; ]\s*(-?\d+)")
+    for ln in lines:
+        coords = coord_pattern.findall(ln)
+        if not coords:
+            continue
+        all_days.append([tuple(map(int, c)) for c in coords])
+
+    if not all_days:
+        raise ValueError("Could not interpret any coordinate pairs.")
+
+    summary = _summarize_paths(all_days)
+    return all_days, summary
+
+
+def _summarize_paths(day_paths):
+    """Create a user-friendly summary string."""
+    n_days = len(day_paths)
+    n_coords = sum(len(day) for day in day_paths)
+    summary_lines = [f"🧩 Parsed {n_days} day{'s' if n_days > 1 else ''}, {n_coords} coordinates total."]
+    for i, day in enumerate(day_paths, start=1):
+        summary_lines.append(f"• Day {i}: {day}")
+    return "\n".join(summary_lines)
+
+
+# ---------------------------------------------------------------------
+# Validation
 # ---------------------------------------------------------------------
 def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day):
     rows, cols = grid.shape
@@ -105,7 +170,7 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
 
 
 # ---------------------------------------------------------------------
-# Draw final frame with legend and totals
+# Draw final frame
 # ---------------------------------------------------------------------
 def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -117,7 +182,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     visited = set()
     move_counter = 0
 
-    # --- Draw all steps and cells ---
+    # Draw each day's path
     for day_index, day in enumerate(day_paths):
         color = day_color_map[day_index]
         for j in range(1, len(day)):
@@ -152,7 +217,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
                                   edgecolor=color, linewidth=1.5,
                                   facecolor="white", alpha=1), zorder=4)
 
-    # Start cell (green border)
+    # Start (green)
     y_start, x_start = day_paths[0][0]
     start_rect = patches.FancyBboxPatch(
         (x_start, y_start), 1, 1,
@@ -162,7 +227,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     )
     ax.add_patch(start_rect)
 
-    # End cell (thick border)
+    # End (thick)
     last_day_index = len(day_paths) - 1
     last_color = day_color_map[last_day_index]
     last_y, last_x = day_paths[last_day_index][-1]
@@ -174,7 +239,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     )
     ax.add_patch(end_rect)
 
-    # --- Simplified one-line title ---
+    # Single-line totals in title
     plastic_total = sum(sum(p) for p in plastic_by_day)
     distance_total = sum(sum(d) for d in distance_by_day_steps)
     ax.set_title(f"plastic = {plastic_total}    |    distance = {distance_total}",
@@ -189,53 +254,54 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
         ax.legend(handles=legend_handles, loc="center left",
                   bbox_to_anchor=(1, 0.5), fontsize=10, frameon=False)
 
+    # Export to PDF bytes
     buf = BytesIO()
     plt.savefig(buf, format="pdf", bbox_inches="tight")
     buf.seek(0)
     pdf_bytes = buf.read()
     buf.close()
-
     return fig, pdf_bytes
-
 
 
 # ---------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------
-st.title("Validate and Plot Grid Path (Per-Day Totals)")
+st.title("Validate and Plot Grid Path (Tolerant Parser + Totals)")
 
-example = '[[[0,0],[0,1],[0,2]], [[4,4],[4,5],[4,6]]]'
-path_str = st.text_area("Enter day_paths (list of lists of [y,x]):", example)
+example = '0,0  0,1  0,2\n0,2  0,3  0,4'
+path_str = st.text_area("Enter day_paths (flexible format):", example)
 start_dir = st.selectbox("Start direction:", list(DIR_TO_IDX.keys()), index=2)
 max_days = st.number_input("Max days:", min_value=1, max_value=10, value=5)
 max_distance = st.number_input("Max distance per day:", min_value=5, max_value=50, value=20)
 
 if st.button("Validate and Draw"):
     try:
-        day_paths = eval(path_str)
-        ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_day_paths(
-            GRID, day_paths, start_d=start_dir,
-            max_days=max_days, max_distance_per_day=max_distance
-        )
-        if ok:
-            st.success("✅ Path valid")
-            st.info(msg)
-
-            # --- NEW: per-day totals ---
-            for d, (plastics, dist_steps) in enumerate(zip(plastic_by_day, distance_by_day_steps), start=1):
-                st.write(f"**Day {d}:** Plastic = {sum(plastics)} ({'+'.join(map(str, plastics))})  |  "
-                         f"Distance = {sum(dist_steps)} ({'+'.join(map(str, dist_steps))})")
-
-            fig, pdf_bytes = draw_last_frame(GRID, day_paths, plastic_by_day, distance_by_day_steps)
-            st.pyplot(fig, clear_figure=True)
-            st.download_button(
-                label="Download last frame as PDF",
-                data=pdf_bytes,
-                file_name="last_frame.pdf",
-                mime="application/pdf"
-            )
-        else:
-            st.error("❌ Invalid path")
-            st.warning(msg)
+        day_paths, summary = parse_day_paths(path_str)
+        st.info(summary)
     except Exception as e:
         st.error(f"⚠️ Parsing error: {e}")
+        st.stop()
+
+    ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_day_paths(
+        GRID, day_paths, start_d=start_dir,
+        max_days=max_days, max_distance_per_day=max_distance
+    )
+    if ok:
+        st.success("✅ Path valid")
+        st.info(msg)
+
+        for d, (plastics, dist_steps) in enumerate(zip(plastic_by_day, distance_by_day_steps), start=1):
+            st.write(f"**Day {d}:** Plastic = {sum(plastics)} ({'+'.join(map(str, plastics))})  |  "
+                     f"Distance = {sum(dist_steps)} ({'+'.join(map(str, dist_steps))})")
+
+        fig, pdf_bytes = draw_last_frame(GRID, day_paths, plastic_by_day, distance_by_day_steps)
+        st.pyplot(fig, clear_figure=True)
+        st.download_button(
+            label="Download last frame as PDF",
+            data=pdf_bytes,
+            file_name="last_frame.pdf",
+            mime="application/pdf"
+        )
+    else:
+        st.error("❌ Invalid path")
+        st.warning(msg)
