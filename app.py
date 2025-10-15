@@ -39,30 +39,16 @@ IDX_TO_DIR = {v: k for k, v in DIR_TO_IDX.items()}
 # Tolerant parsing utilities
 # ---------------------------------------------------------------------
 def parse_day_paths(text):
-    """
-    Tolerant parser for grid paths.
-
-    Accepts:
-      - Proper Python lists/tuples: [[[0,0],[1,1]]] or [(0,0),(1,1)]
-      - Mixed () [] [](), extra commas, newlines, spaces
-      - Bare coordinates separated by spaces or newlines:
-            0,0  0,1  0,2
-            0,2  0,3  0,4
-    Returns:
-      (parsed_day_paths, summary_string)
-    """
     s = text.strip()
     if not s:
         raise ValueError("Empty input.")
 
-    # 1. Try proper Python-like literal
     try:
         normalized = s.replace('(', '[').replace(')', ']')
         obj = ast.literal_eval(normalized)
         if isinstance(obj, tuple):
             obj = [list(obj)]
         if isinstance(obj, list) and all(isinstance(el, (list, tuple)) for el in obj):
-            # Detect single day
             if all(isinstance(x, (int, float)) for x in obj[0]) and len(obj[0]) == 2:
                 obj = [obj]
             parsed = [[tuple(map(int, step)) for step in day] for day in obj]
@@ -71,7 +57,6 @@ def parse_day_paths(text):
     except Exception:
         pass
 
-    # 2. Fallback: regex coordinate extraction
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     all_days = []
     coord_pattern = re.compile(r"(-?\d+)\s*[,; ]\s*(-?\d+)")
@@ -89,7 +74,6 @@ def parse_day_paths(text):
 
 
 def _summarize_paths(day_paths):
-    """Create a user-friendly summary string."""
     n_days = len(day_paths)
     n_coords = sum(len(day) for day in day_paths)
     summary_lines = [f"🧩 Parsed {n_days} day{'s' if n_days > 1 else ''}, {n_coords} coordinates total."]
@@ -101,26 +85,27 @@ def _summarize_paths(day_paths):
 # ---------------------------------------------------------------------
 # Validation
 # ---------------------------------------------------------------------
-def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day):
-    """
-    Validate multi-day paths with:
-      - Boundary checks
-      - Max distance per day
-      - Turn angle ≤ 45 degrees between consecutive steps
-    """
+def validate_day_paths(grid, day_paths, start_cell, start_d, max_days, max_distance_per_day):
     rows, cols = grid.shape
     visited = set()
     plastic_by_day = []
     distance_by_day = []
     distance_by_day_steps = []
-    current_dir = start_d
-    prev_end = None
+    prev_end = start_cell
     prev_dir_idx = DIR_TO_IDX[start_d]
 
+    # Basic input checks
     if not isinstance(day_paths, list):
         return False, "day_paths must be a list", [], [], []
     if len(day_paths) > max_days:
         return False, f"Too many days ({len(day_paths)} > {max_days})", [], [], []
+
+    # Validate start cell
+    y_start, x_start = start_cell
+    if not (0 <= y_start < rows and 0 <= x_start < cols):
+        return False, f"Start cell {start_cell} out of bounds", [], [], []
+
+    visited.add(start_cell)
 
     for d, day in enumerate(day_paths, start=1):
         if not day or len(day) < 2:
@@ -130,10 +115,10 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
         steps = []
         plastic_today = []
 
+        # Check that day starts where expected
         y0, x0 = day[0]
-        if not (0 <= y0 < rows and 0 <= x0 < cols):
-            return False, f"Day {d} starts out of bounds at {(y0, x0)}", [], [], []
-
+        if d == 1 and (y0, x0) != start_cell:
+            return False, f"Day 1 must start at {start_cell}, got {(y0, x0)}", [], [], []
         if d > 1 and (y0, x0) != prev_end:
             return False, f"Day {d} starts at {(y0, x0)} but previous ended at {prev_end}", [], [], []
 
@@ -154,13 +139,11 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
             except ValueError:
                 return False, f"Day {d} step {i} invalid move from {(y0, x0)} to {(y1, x1)}", [], [], []
 
-            # --- NEW: turning constraint (max 45 degrees) ---
             diff = abs(dir_idx - last_dir_idx)
-            diff = min(diff, 8 - diff)  # wrap-around (e.g., 7 and 0 are adjacent)
+            diff = min(diff, 8 - diff)
             if diff > 1:
                 return False, (
-                    f"Day {d} step {i} turns too sharply: {IDX_TO_DIR[last_dir_idx]} → {IDX_TO_DIR[dir_idx]} "
-                    f"({diff*45} degrees)"
+                    f"Day {d} step {i} turns too sharply: {IDX_TO_DIR[last_dir_idx]} → {IDX_TO_DIR[dir_idx]}"
                 ), [], [], []
 
             step_len = STEP_LENGTH[dir_idx]
@@ -186,7 +169,6 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
     return True, "Path validated successfully", plastic_by_day, distance_by_day, distance_by_day_steps
 
 
-
 # ---------------------------------------------------------------------
 # Draw final frame
 # ---------------------------------------------------------------------
@@ -200,7 +182,6 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     visited = set()
     move_counter = 0
 
-    # Draw each day's path
     for day_index, day in enumerate(day_paths):
         color = day_color_map[day_index]
         for j in range(1, len(day)):
@@ -227,15 +208,6 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
             )
             ax.add_patch(rect)
 
-            if (y0, x0) not in visited:
-                visited.add((y0, x0))
-                ax.text(x0 + 0.5, y0 + 0.5, str(grid[y0, x0]),
-                        ha="center", va="center", fontsize=10, color=color,
-                        bbox=dict(boxstyle="round,pad=0.2",
-                                  edgecolor=color, linewidth=1.5,
-                                  facecolor="white", alpha=1), zorder=4)
-
-    # Start (green)
     y_start, x_start = day_paths[0][0]
     start_rect = patches.FancyBboxPatch(
         (x_start, y_start), 1, 1,
@@ -245,7 +217,6 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     )
     ax.add_patch(start_rect)
 
-    # End (thick)
     last_day_index = len(day_paths) - 1
     last_color = day_color_map[last_day_index]
     last_y, last_x = day_paths[last_day_index][-1]
@@ -257,13 +228,11 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     )
     ax.add_patch(end_rect)
 
-    # Single-line totals in title
     plastic_total = sum(sum(p) for p in plastic_by_day)
     distance_total = sum(sum(d) for d in distance_by_day_steps)
     ax.set_title(f"plastic = {plastic_total}    |    distance = {distance_total}",
                  fontsize=13, family="monospace", pad=15)
 
-    # Legend
     legend_handles = [
         patches.Patch(color=day_color_map[i], label=f"Day {i + 1}")
         for i in range(len(day_paths))
@@ -272,7 +241,6 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
         ax.legend(handles=legend_handles, loc="center left",
                   bbox_to_anchor=(1, 0.5), fontsize=10, frameon=False)
 
-    # Export to PDF bytes
     buf = BytesIO()
     plt.savefig(buf, format="pdf", bbox_inches="tight")
     buf.seek(0)
@@ -284,10 +252,12 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
 # ---------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------
-st.title("Validate and Plot Grid Path (Tolerant Parser + Totals)")
+st.title("Validate and Plot Grid Path (with Start Cell + Direction)")
 
 example = '0,0  0,1  0,2\n0,2  0,3  0,4'
 path_str = st.text_area("Enter day_paths (flexible format):", example)
+start_y = st.number_input("Start row (y):", min_value=0, max_value=GRID.shape[0] - 1, value=0)
+start_x = st.number_input("Start column (x):", min_value=0, max_value=GRID.shape[1] - 1, value=0)
 start_dir = st.selectbox("Start direction:", list(DIR_TO_IDX.keys()), index=2)
 max_days = st.number_input("Max days:", min_value=1, max_value=10, value=5)
 max_distance = st.number_input("Max distance per day:", min_value=5, max_value=50, value=20)
@@ -301,9 +271,13 @@ if st.button("Validate and Draw"):
         st.stop()
 
     ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_day_paths(
-        GRID, day_paths, start_d=start_dir,
-        max_days=max_days, max_distance_per_day=max_distance
+        GRID, day_paths,
+        start_cell=(start_y, start_x),
+        start_d=start_dir,
+        max_days=max_days,
+        max_distance_per_day=max_distance
     )
+
     if ok:
         st.success("✅ Path valid")
         st.info(msg)
