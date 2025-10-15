@@ -117,6 +117,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     visited = set()
     move_counter = 0
 
+    # --- Draw all steps and cells ---
     for day_index, day in enumerate(day_paths):
         color = day_color_map[day_index]
         for j in range(1, len(day)):
@@ -138,11 +139,8 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
             rect = patches.FancyBboxPatch(
                 (x0, y0), 1, 1,
                 boxstyle="round,pad=0.002,rounding_size=0.15",
-                linewidth=3,
-                edgecolor=color,
-                facecolor="none",
-                alpha=0.8,
-                zorder=3 + day_index
+                linewidth=3, edgecolor=color, facecolor="none",
+                alpha=0.8, zorder=3 + day_index
             )
             ax.add_patch(rect)
 
@@ -154,7 +152,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
                                   edgecolor=color, linewidth=1.5,
                                   facecolor="white", alpha=1), zorder=4)
 
-    # Start cell (green)
+    # Start cell (green border)
     y_start, x_start = day_paths[0][0]
     start_rect = patches.FancyBboxPatch(
         (x_start, y_start), 1, 1,
@@ -164,7 +162,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     )
     ax.add_patch(start_rect)
 
-    # End cell (thick)
+    # End cell (thick border)
     last_day_index = len(day_paths) - 1
     last_color = day_color_map[last_day_index]
     last_y, last_x = day_paths[last_day_index][-1]
@@ -176,16 +174,13 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     )
     ax.add_patch(end_rect)
 
-    # Title with totals
-    plastic_exprs = ["+".join(str(x) for x in p) for p in plastic_by_day if p]
-    dist_exprs = ["+".join(str(x) for x in d) for d in distance_by_day_steps if d]
+    # --- Simplified one-line title ---
     plastic_total = sum(sum(p) for p in plastic_by_day)
     distance_total = sum(sum(d) for d in distance_by_day_steps)
-    plastic_line = f'{"plastic":>13}: {" + ".join(plastic_exprs)} = {plastic_total}'
-    distance_line = f'{"distance":>13}: {" + ".join(dist_exprs)} = {distance_total}'
-    ax.set_title(f"{plastic_line}\n{distance_line}", fontsize=12, family="monospace")
+    ax.set_title(f"plastic = {plastic_total}    |    distance = {distance_total}",
+                 fontsize=13, family="monospace", pad=15)
 
-    # Legend (days)
+    # Legend
     legend_handles = [
         patches.Patch(color=day_color_map[i], label=f"Day {i + 1}")
         for i in range(len(day_paths))
@@ -201,6 +196,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     buf.close()
 
     return fig, pdf_bytes
+
 
 
 # ---------------------------------------------------------------------
