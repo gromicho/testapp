@@ -34,7 +34,7 @@ IDX_TO_DIR = {v: k for k, v in DIR_TO_IDX.items()}
 
 
 # ---------------------------------------------------------------------
-# Enhanced validation with messages
+# Enhanced validation with per-day plastic and distance
 # ---------------------------------------------------------------------
 def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day):
     rows, cols = grid.shape
@@ -105,7 +105,7 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
 
 
 # ---------------------------------------------------------------------
-# Draw final frame with totals and return both fig and PDF bytes
+# Draw final frame with legend and totals
 # ---------------------------------------------------------------------
 def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     fig, ax = plt.subplots(figsize=(6, 6))
@@ -125,11 +125,9 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
             x1c, y1c = x1 + 0.5, y1 + 0.5
             xm, ym = (x0c + x1c) / 2, (y0c + y1c) / 2
 
-            # Arrow between cells
             ax.annotate("", xy=(xm, ym), xytext=(x0c, y0c),
                         arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=2)
 
-            # Step number
             move_counter += 1
             ax.text(x0c, y0c + 0.25, str(move_counter),
                     color="black", fontsize=8, ha="center", va="center", weight="bold",
@@ -137,7 +135,6 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
                     bbox=dict(boxstyle="round,pad=0.15",
                               facecolor="white", edgecolor=color, linewidth=0.8, alpha=0.9))
 
-            # Cell frame
             rect = patches.FancyBboxPatch(
                 (x0, y0), 1, 1,
                 boxstyle="round,pad=0.002,rounding_size=0.15",
@@ -149,7 +146,6 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
             )
             ax.add_patch(rect)
 
-            # Plastic value
             if (y0, x0) not in visited:
                 visited.add((y0, x0))
                 ax.text(x0 + 0.5, y0 + 0.5, str(grid[y0, x0]),
@@ -158,7 +154,7 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
                                   edgecolor=color, linewidth=1.5,
                                   facecolor="white", alpha=1), zorder=4)
 
-    # Highlight start cell (green)
+    # Start cell (green)
     y_start, x_start = day_paths[0][0]
     start_rect = patches.FancyBboxPatch(
         (x_start, y_start), 1, 1,
@@ -168,11 +164,10 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     )
     ax.add_patch(start_rect)
 
-    # Highlight final cell (thick)
+    # End cell (thick)
     last_day_index = len(day_paths) - 1
     last_color = day_color_map[last_day_index]
     last_y, last_x = day_paths[last_day_index][-1]
-
     end_rect = patches.FancyBboxPatch(
         (last_x, last_y), 1, 1,
         boxstyle="round,pad=0.002,rounding_size=0.15",
@@ -181,17 +176,16 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     )
     ax.add_patch(end_rect)
 
-    # Plastic and distance totals in title
+    # Title with totals
     plastic_exprs = ["+".join(str(x) for x in p) for p in plastic_by_day if p]
     dist_exprs = ["+".join(str(x) for x in d) for d in distance_by_day_steps if d]
     plastic_total = sum(sum(p) for p in plastic_by_day)
     distance_total = sum(sum(d) for d in distance_by_day_steps)
-
     plastic_line = f'{"plastic":>13}: {" + ".join(plastic_exprs)} = {plastic_total}'
     distance_line = f'{"distance":>13}: {" + ".join(dist_exprs)} = {distance_total}'
     ax.set_title(f"{plastic_line}\n{distance_line}", fontsize=12, family="monospace")
 
-    # --- NEW: Legend showing color per day ---
+    # Legend (days)
     legend_handles = [
         patches.Patch(color=day_color_map[i], label=f"Day {i + 1}")
         for i in range(len(day_paths))
@@ -200,7 +194,6 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
         ax.legend(handles=legend_handles, loc="center left",
                   bbox_to_anchor=(1, 0.5), fontsize=10, frameon=False)
 
-    # Export to PDF bytes
     buf = BytesIO()
     plt.savefig(buf, format="pdf", bbox_inches="tight")
     buf.seek(0)
@@ -210,11 +203,10 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
     return fig, pdf_bytes
 
 
-
 # ---------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------
-st.title("Validate and Plot Grid Path (Inline + PDF Download)")
+st.title("Validate and Plot Grid Path (Per-Day Totals)")
 
 example = '[[[0,0],[0,1],[0,2]], [[4,4],[4,5],[4,6]]]'
 path_str = st.text_area("Enter day_paths (list of lists of [y,x]):", example)
@@ -225,14 +217,20 @@ max_distance = st.number_input("Max distance per day:", min_value=5, max_value=5
 if st.button("Validate and Draw"):
     try:
         day_paths = eval(path_str)
-        ok, msg, plastic, dist, dist_steps = validate_day_paths(
+        ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_day_paths(
             GRID, day_paths, start_d=start_dir,
             max_days=max_days, max_distance_per_day=max_distance
         )
         if ok:
             st.success("✅ Path valid")
             st.info(msg)
-            fig, pdf_bytes = draw_last_frame(GRID, day_paths, plastic, dist_steps)
+
+            # --- NEW: per-day totals ---
+            for d, (plastics, dist_steps) in enumerate(zip(plastic_by_day, distance_by_day_steps), start=1):
+                st.write(f"**Day {d}:** Plastic = {sum(plastics)} ({'+'.join(map(str, plastics))})  |  "
+                         f"Distance = {sum(dist_steps)} ({'+'.join(map(str, dist_steps))})")
+
+            fig, pdf_bytes = draw_last_frame(GRID, day_paths, plastic_by_day, distance_by_day_steps)
             st.pyplot(fig, clear_figure=True)
             st.download_button(
                 label="Download last frame as PDF",
