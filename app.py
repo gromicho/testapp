@@ -1,17 +1,3 @@
-     plastic: 4+7+14 = 25
-    distance: 5+5+7 = 17
-```).  
-
-Everything else stays:  
-✅ detailed validation messages,  
-✅ last frame drawn,  
-✅ downloadable PDF.  
-
----
-
-## ✅ Final `app.py`
-
-```python
 # app.py
 # Python 3.12 — ASCII only, PEP8 compliant.
 
