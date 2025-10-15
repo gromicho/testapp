@@ -1,3 +1,17 @@
+     plastic: 4+7+14 = 25
+    distance: 5+5+7 = 17
+```).  
+
+Everything else stays:  
+✅ detailed validation messages,  
+✅ last frame drawn,  
+✅ downloadable PDF.  
+
+---
+
+## ✅ Final `app.py`
+
+```python
 # app.py
 # Python 3.12 — ASCII only, PEP8 compliant.
 
@@ -34,10 +48,9 @@ IDX_TO_DIR = {v: k for k, v in DIR_TO_IDX.items()}
 
 
 # ---------------------------------------------------------------------
-# Enhanced validation with detailed messages
+# Enhanced validation with messages
 # ---------------------------------------------------------------------
 def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day):
-    """Validate a multi-day path with error reporting."""
     rows, cols = grid.shape
     visited = set()
     plastic_by_day = []
@@ -47,7 +60,6 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
     prev_end = None
     prev_dir = start_d
 
-    # Empty input or excessive days
     if not isinstance(day_paths, list):
         return False, "day_paths must be a list", [], [], []
     if len(day_paths) > max_days:
@@ -107,10 +119,9 @@ def validate_day_paths(grid, day_paths, start_d, max_days, max_distance_per_day)
 
 
 # ---------------------------------------------------------------------
-# Draw final frame and export PDF
+# Draw final frame with totals on top
 # ---------------------------------------------------------------------
-def draw_last_frame_pdf(grid, day_paths):
-    """Draw last frame and return PDF bytes."""
+def draw_last_frame_pdf(grid, day_paths, plastic_by_day, distance_by_day_steps):
     fig, ax = plt.subplots(figsize=(6, 6))
     sns.heatmap(grid, ax=ax, cmap="YlGnBu", annot=True, fmt="d", cbar=False, square=True)
     ax.invert_yaxis()
@@ -143,13 +154,25 @@ def draw_last_frame_pdf(grid, day_paths):
                                   edgecolor=color, linewidth=1.5,
                                   facecolor="white", alpha=1), zorder=4)
 
+    # Highlight start cell
     y_start, x_start = day_paths[0][0]
     rect = patches.FancyBboxPatch((x_start, y_start), 1, 1,
                                   boxstyle="round,pad=0.002,rounding_size=0.15",
                                   linewidth=3, edgecolor="green",
                                   facecolor="none", alpha=0.8, zorder=10)
     ax.add_patch(rect)
-    ax.set_title("Final path configuration", fontsize=14, family="monospace")
+
+    # --- Title showing plastic and distance expressions ---
+    n_days = len(day_paths)
+    plastic_exprs = ["+".join(str(x) for x in p) for p in plastic_by_day if p]
+    dist_exprs = ["+".join(str(x) for x in d) for d in distance_by_day_steps if d]
+    plastic_total = sum(sum(p) for p in plastic_by_day)
+    distance_total = sum(sum(d) for d in distance_by_day_steps)
+
+    plastic_line = f'{"plastic":>13}: {" + ".join(plastic_exprs)} = {plastic_total}'
+    distance_line = f'{"distance":>13}: {" + ".join(dist_exprs)} = {distance_total}'
+
+    ax.set_title(f"{plastic_line}\n{distance_line}", fontsize=12, family="monospace")
 
     buf = BytesIO()
     plt.savefig(buf, format="pdf", bbox_inches="tight")
@@ -161,7 +184,7 @@ def draw_last_frame_pdf(grid, day_paths):
 # ---------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------
-st.title("Validate and Plot Grid Path with Detailed Feedback")
+st.title("Validate and Plot Grid Path (Totals in Title)")
 
 example = '[[[0,0],[0,1],[0,2]], [[4,4],[4,5],[4,6]]]'
 path_str = st.text_area("Enter day_paths (list of lists of [y,x]):", example)
@@ -172,14 +195,14 @@ max_distance = st.number_input("Max distance per day:", min_value=5, max_value=5
 if st.button("Validate and Draw"):
     try:
         day_paths = eval(path_str)
-        ok, message, plastic, dist, dist_steps = validate_day_paths(
+        ok, msg, plastic, dist, dist_steps = validate_day_paths(
             GRID, day_paths, start_d=start_dir,
             max_days=max_days, max_distance_per_day=max_distance
         )
         if ok:
-            st.success("✅ Path is valid.")
-            st.info(message)
-            pdf_bytes = draw_last_frame_pdf(GRID, day_paths)
+            st.success("✅ Path valid")
+            st.info(msg)
+            pdf_bytes = draw_last_frame_pdf(GRID, day_paths, plastic, dist_steps)
             st.download_button(
                 label="Download last frame as PDF",
                 data=pdf_bytes,
@@ -188,6 +211,6 @@ if st.button("Validate and Draw"):
             )
         else:
             st.error("❌ Invalid path")
-            st.warning(message)
+            st.warning(msg)
     except Exception as e:
         st.error(f"⚠️ Parsing error: {e}")
