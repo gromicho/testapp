@@ -36,6 +36,7 @@ GRID = np.array([
     [4, 4, 0, 4, 0, 0, 0, 4, 4, 7, 4, 4, 0, 0, 0, 0, 7, 0, 0, 0, 11, 0, 4, 4, 4, 0, 0, 0, 0, 0]
 ])
 
+
 # ---------------------------------------------------------------------
 # Direction data
 # ---------------------------------------------------------------------
@@ -48,14 +49,15 @@ IDX_TO_DIR = {v: k for k, v in DIR_TO_IDX.items()}
 
 
 # ---------------------------------------------------------------------
-# Parsing utilities
+# Tolerant parsing utilities
 # ---------------------------------------------------------------------
 def parse_day_paths(text):
     s = text.strip()
     if not s:
         raise ValueError("Empty input.")
+
     try:
-        normalized = s.replace("(", "[").replace(")", "]")
+        normalized = s.replace('(', '[').replace(')', ']')
         obj = ast.literal_eval(normalized)
         if isinstance(obj, tuple):
             obj = [list(obj)]
@@ -67,15 +69,19 @@ def parse_day_paths(text):
             return parsed, summary
     except Exception:
         pass
+
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     all_days = []
     coord_pattern = re.compile(r"(-?\d+)\s*[,; ]\s*(-?\d+)")
     for ln in lines:
         coords = coord_pattern.findall(ln)
-        if coords:
-            all_days.append([tuple(map(int, c)) for c in coords])
+        if not coords:
+            continue
+        all_days.append([tuple(map(int, c)) for c in coords])
+
     if not all_days:
         raise ValueError("Could not interpret any coordinate pairs.")
+
     summary = _summarize_paths(all_days)
     return all_days, summary
 
@@ -100,53 +106,70 @@ def validate_day_paths(grid, day_paths, start_cell, start_d, max_days, max_dista
     distance_by_day_steps = []
     prev_end = start_cell
     prev_dir_idx = DIR_TO_IDX[start_d]
+
+    # Basic input checks
+    if not isinstance(day_paths, list):
+        return False, "day_paths must be a list", [], [], []
+    if len(day_paths) > max_days:
+        return False, f"Too many days ({len(day_paths)} > {max_days})", [], [], []
+
+    # Validate start cell
     y_start, x_start = start_cell
     if not (0 <= y_start < rows and 0 <= x_start < cols):
         return False, f"Start cell {start_cell} out of bounds", [], [], []
+
     visited.add(start_cell)
-    if len(day_paths) > max_days:
-        return False, f"Too many days ({len(day_paths)} > {max_days})", [], [], []
 
     for d, day in enumerate(day_paths, start=1):
         if not day or len(day) < 2:
             return False, f"Day {d} is empty or too short", [], [], []
+
+        dist = 0
+        steps = []
+        plastic_today = []
+
+        # Check that day starts where expected
         y0, x0 = day[0]
         if d == 1 and (y0, x0) != start_cell:
             return False, f"Day 1 must start at {start_cell}, got {(y0, x0)}", [], [], []
         if d > 1 and (y0, x0) != prev_end:
             return False, f"Day {d} starts at {(y0, x0)} but previous ended at {prev_end}", [], [], []
 
-        dist = 0
-        steps = []
-        plastic_today = []
         if (y0, x0) not in visited:
             plastic_today.append(int(grid[y0, x0]))
             visited.add((y0, x0))
+
         last_dir_idx = prev_dir_idx
 
         for i in range(1, len(day)):
             y1, x1 = day[i]
             if not (0 <= y1 < rows and 0 <= x1 < cols):
                 return False, f"Day {d} step {i} out of bounds: {(y1, x1)}", [], [], []
+
             dy, dx = y1 - y0, x1 - x0
             try:
                 dir_idx = DIR_VECTORS.index((dy, dx))
             except ValueError:
                 return False, f"Day {d} step {i} invalid move from {(y0, x0)} to {(y1, x1)}", [], [], []
+
             diff = abs(dir_idx - last_dir_idx)
             diff = min(diff, 8 - diff)
             if diff > 1:
                 return False, (
                     f"Day {d} step {i} turns too sharply: {IDX_TO_DIR[last_dir_idx]} → {IDX_TO_DIR[dir_idx]}"
                 ), [], [], []
+
             step_len = STEP_LENGTH[dir_idx]
             if dist + step_len > max_distance_per_day:
                 return False, f"Day {d} exceeds distance {max_distance_per_day} at step {i}", [], [], []
+
             dist += step_len
             steps.append(step_len)
+
             if (y1, x1) not in visited:
                 plastic_today.append(int(grid[y1, x1]))
                 visited.add((y1, x1))
+
             y0, x0 = y1, x1
             last_dir_idx = dir_idx
 
@@ -162,8 +185,10 @@ def validate_day_paths(grid, day_paths, start_cell, start_d, max_days, max_dista
 # ---------------------------------------------------------------------
 # Draw final frame
 # ---------------------------------------------------------------------
-def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps, fig_width, fig_height):
-    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps):
+
+    fig, ax = plt.subplots(figsize=(13, 13))
+
     sns.heatmap(grid, ax=ax, cmap="YlGnBu", annot=True, fmt="d", cbar=False, square=True)
     ax.invert_yaxis()
 
@@ -179,36 +204,54 @@ def draw_last_frame(grid, day_paths, plastic_by_day, distance_by_day_steps, fig_
             x0c, y0c = x0 + 0.5, y0 + 0.5
             x1c, y1c = x1 + 0.5, y1 + 0.5
             xm, ym = (x0c + x1c) / 2, (y0c + y1c) / 2
+
             ax.annotate("", xy=(xm, ym), xytext=(x0c, y0c),
                         arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=2)
+
             move_counter += 1
             ax.text(x0c, y0c + 0.25, str(move_counter),
                     color="black", fontsize=8, ha="center", va="center", weight="bold",
+                    zorder=6,
                     bbox=dict(boxstyle="round,pad=0.15",
                               facecolor="white", edgecolor=color, linewidth=0.8, alpha=0.9))
+
             rect = patches.FancyBboxPatch(
                 (x0, y0), 1, 1,
                 boxstyle="round,pad=0.002,rounding_size=0.15",
-                linewidth=3, edgecolor=color, facecolor="none", alpha=0.8)
+                linewidth=3, edgecolor=color, facecolor="none",
+                alpha=0.8, zorder=3 + day_index
+            )
             ax.add_patch(rect)
 
     y_start, x_start = day_paths[0][0]
-    ax.add_patch(patches.FancyBboxPatch(
-        (x_start, y_start), 1, 1, boxstyle="round,pad=0.002,rounding_size=0.15",
-        linewidth=3, edgecolor="green", facecolor="none", alpha=0.8))
+    start_rect = patches.FancyBboxPatch(
+        (x_start, y_start), 1, 1,
+        boxstyle="round,pad=0.002,rounding_size=0.15",
+        linewidth=3, edgecolor="green",
+        facecolor="none", alpha=0.8, zorder=10
+    )
+    ax.add_patch(start_rect)
+
     last_day_index = len(day_paths) - 1
     last_color = day_color_map[last_day_index]
     last_y, last_x = day_paths[last_day_index][-1]
-    ax.add_patch(patches.FancyBboxPatch(
-        (last_x, last_y), 1, 1, boxstyle="round,pad=0.002,rounding_size=0.15",
-        linewidth=9, edgecolor=last_color, facecolor="none", alpha=0.8))
+    end_rect = patches.FancyBboxPatch(
+        (last_x, last_y), 1, 1,
+        boxstyle="round,pad=0.002,rounding_size=0.15",
+        linewidth=9, edgecolor=last_color,
+        facecolor="none", alpha=0.8, zorder=12
+    )
+    ax.add_patch(end_rect)
 
     plastic_total = sum(sum(p) for p in plastic_by_day)
     distance_total = sum(sum(d) for d in distance_by_day_steps)
     ax.set_title(f"plastic = {plastic_total}    |    distance = {distance_total}",
                  fontsize=13, family="monospace", pad=15)
-    legend_handles = [patches.Patch(color=day_color_map[i], label=f"Day {i + 1}")
-                      for i in range(len(day_paths))]
+
+    legend_handles = [
+        patches.Patch(color=day_color_map[i], label=f"Day {i + 1}")
+        for i in range(len(day_paths))
+    ]
     if legend_handles:
         ax.legend(handles=legend_handles, loc="center left",
                   bbox_to_anchor=(1, 0.5), fontsize=10, frameon=False)
