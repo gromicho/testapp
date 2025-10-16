@@ -265,25 +265,43 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
 
 
 # ---------------------------------------------------------------------
-# Streamlit UI
+# Streamlit UI (Nederlandse versie)
 # ---------------------------------------------------------------------
-st.title("Validate Rotation-Code Path for The Ocean Cleanup Challenge")
+st.title("Validatie van de Rotatiecode-route – The Ocean Cleanup Challenge")
+
+st.markdown(
+    "Deze applicatie controleert of jouw ingevoerde route geldig is volgens de "
+    "**regels van de Ocean Cleanup Challenge**. De route wordt ingevoerd als rotatiecodes "
+    "(-1, 0, 1), waarbij elke regel één dag voorstelt. "
+    "Het programma valideert de afstand, richting en verzameld plastic, "
+    "en toont daarna een visualisatie van de volledige vijfdaagse operatie."
+)
 
 example = "0, 0, 1, 0, -1\n0, 1, 1, 0\n0, 0, 0"
-path_str = st.text_area("Enter rotation codes per day (use -1, 0, 1):", example)
-start_y = st.number_input("Start row (y):", min_value=0, max_value=GRID.shape[0] - 1, value=0)
-start_x = st.number_input("Start column (x):", min_value=0, max_value=GRID.shape[1] - 1, value=0)
-start_dir = st.selectbox("Start direction:", list(DIR_TO_IDX.keys()), index=2)
-max_days = st.number_input("Max days:", min_value=1, max_value=10, value=5)
-max_distance = st.number_input("Max distance per day (km):", min_value=5, max_value=50, value=50)
+path_str = st.text_area(
+    "Voer de rotatiecodes per dag in (gebruik -1, 0 of 1, elke regel = één dag):",
+    example
+)
 
-if st.button("Validate and Draw"):
+start_y = st.number_input(
+    "Start-rij (y):", min_value=0, max_value=GRID.shape[0] - 1, value=0
+)
+start_x = st.number_input(
+    "Start-kolom (x):", min_value=0, max_value=GRID.shape[1] - 1, value=0
+)
+start_dir = st.selectbox("Start-richting:", list(DIR_TO_IDX.keys()), index=2)
+max_days = st.number_input("Maximaal aantal dagen:", min_value=1, max_value=10, value=5)
+max_distance = st.number_input(
+    "Maximale afstand per dag (in km):", min_value=5, max_value=50, value=50
+)
+
+if st.button("Valideer en visualiseer route"):
     try:
         rotation_days = parse_rotation_paths(path_str)
         n_days = len(rotation_days)
-        st.info(f"🧭 Parsed {n_days} day{'s' if n_days > 1 else ''}.")
+        st.info(f"📅 {n_days} dag{'en' if n_days > 1 else ''} succesvol ingelezen.")
     except Exception as e:
-        st.error(f"❌ Parsing error: {e}")
+        st.error(f"❌ Fout bij het inlezen van de rotatiecodes: {e}")
         st.stop()
 
     ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_rotation_paths(
@@ -295,19 +313,26 @@ if st.button("Validate and Draw"):
         total_distance = sum(sum(d) for d in distance_by_day_steps)
         avg_distance = np.mean(distance_by_day) if distance_by_day else 0
 
-        st.success("✅ Route valid and successfully parsed!")
+        st.success("✅ De route is geldig en voldoet aan alle regels!")
+
         st.markdown(
-            f"### 📊 Key Performance Indicators\n"
-            f"- **Days parsed:** {len(rotation_days)}  \n"
-            f"- **Total plastic collected:** 🟢 {total_plastic} units  \n"
-            f"- **Total distance traveled:** 🔵 {total_distance} km  \n"
-            f"- **Average distance per day:** {avg_distance:.1f} km"
+            f"### 📊 Resultaten en Prestatie-indicatoren (KPI’s)\n"
+            f"De ingevoerde route is gecontroleerd en voldoet aan de regels. "
+            f"Hieronder vind je een overzicht van de belangrijkste resultaten.\n\n"
+            f"- **Aantal dagen uitgevoerd:** {len(rotation_days)}  \n"
+            f"- **Totaal verzameld plastic:** 🟢 **{total_plastic} eenheden**  \n"
+            f"- **Totale afgelegde afstand:** 🔵 **{total_distance} km**  \n"
+            f"- **Gemiddelde afstand per dag:** {avg_distance:.1f} km\n\n"
+            f"💡 *Hoe meer plastic je verzamelt binnen de toegestane afstand, "
+            f"hoe beter je strategie is. Probeer een balans te vinden tussen afstand, "
+            f"richting en het vermijden van dubbele bezoeken.*"
         )
 
+        st.markdown("### 📅 Dagelijkse details")
         for d, (plastics, dist_steps) in enumerate(zip(plastic_by_day, distance_by_day_steps), start=1):
             st.markdown(
-                f"**Day {d}:** Plastic = {sum(plastics)} ({'+'.join(map(str, plastics))})  |  "
-                f"Distance = {sum(dist_steps)} ({'+'.join(map(str, dist_steps))})"
+                f"- **Dag {d}:** Plastic = {sum(plastics)} ({'+'.join(map(str, plastics))})  "
+                f"| Afstand = {sum(dist_steps)} km ({'+'.join(map(str, dist_steps))})"
             )
 
         fig, pdf_bytes = draw_last_frame(
@@ -318,14 +343,20 @@ if st.button("Validate and Draw"):
             plastic_by_day,
             distance_by_day_steps
         )
+
         st.pyplot(fig, clear_figure=True)
+
         st.download_button(
-            "Download last frame as PDF",
+            "📥 Download laatste frame als PDF",
             pdf_bytes,
-            "last_frame.pdf",
+            "laatste_frame.pdf",
             "application/pdf"
         )
+
     else:
-        st.error("❌ Invalid route!")
-        st.markdown(f"**Reason:** {msg}")
-        st.info("Check your rotations: ensure the path stays inside the grid and daily distance ≤ max distance.")
+        st.error("❌ Ongeldige route!")
+        st.markdown(f"**Reden:** {msg}")
+        st.info(
+            "Controleer of de route binnen het rooster blijft, geen te grote afstand per dag aflegt "
+            "en alleen toegestane richtingen gebruikt."
+        )
