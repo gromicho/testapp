@@ -127,7 +127,7 @@ def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days
             dir_idx = DIR_VECTORS.index((dy, dx))
             step_len = STEP_LENGTH[dir_idx]
             if dist + step_len > max_distance:
-                return False, f"Day {d} exceeds {max_distance} km", [], [], []
+                return False, f"Day {d} exceeds {max_distance} km (stopped at step {i}).", [], [], []
             dist += step_len
             steps.append(step_len)
             if (y1, x1) not in visited:
@@ -173,7 +173,7 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
         square=True,
         xticklabels=col_labels,
         yticklabels=row_labels,
-        annot_kws={"size": 16, "weight": "bold"}  # larger, bold numbers
+        annot_kws={"size": 16, "weight": "bold", "color": "black"}  # larger, bold numbers
     )
 
     # Excel layout
@@ -186,7 +186,6 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
     cmap = plt.get_cmap("tab10")
     day_color_map = {i: cmap(i % 10) for i in range(len(rotation_days))}
 
-    visited = set()
     move_counter = 0
     y, x = start_cell
     dir_idx = DIR_TO_IDX[start_dir]
@@ -223,7 +222,7 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
 
         y, x = coords[-1]
 
-    # Start cell highlight
+    # Start and End highlights
     y_start, x_start = start_cell
     start_rect = patches.FancyBboxPatch(
         (x_start, y_start), 1, 1,
@@ -233,7 +232,6 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
     )
     ax.add_patch(start_rect)
 
-    # End cell highlight
     last_y, last_x = y, x
     last_color = day_color_map[len(rotation_days) - 1]
     end_rect = patches.FancyBboxPatch(
@@ -282,9 +280,10 @@ max_distance = st.number_input("Max distance per day (km):", min_value=5, max_va
 if st.button("Validate and Draw"):
     try:
         rotation_days = parse_rotation_paths(path_str)
-        st.info(f"Parsed {len(rotation_days)} days.")
+        n_days = len(rotation_days)
+        st.info(f"🧭 Parsed {n_days} day{'s' if n_days > 1 else ''}.")
     except Exception as e:
-        st.error(f"Parsing error: {e}")
+        st.error(f"❌ Parsing error: {e}")
         st.stop()
 
     ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_rotation_paths(
@@ -292,7 +291,25 @@ if st.button("Validate and Draw"):
     )
 
     if ok:
-        st.success("✅ Route valid")
+        total_plastic = sum(sum(p) for p in plastic_by_day)
+        total_distance = sum(sum(d) for d in distance_by_day_steps)
+        avg_distance = np.mean(distance_by_day) if distance_by_day else 0
+
+        st.success("✅ Route valid and successfully parsed!")
+        st.markdown(
+            f"### 📊 Key Performance Indicators\n"
+            f"- **Days parsed:** {len(rotation_days)}  \n"
+            f"- **Total plastic collected:** 🟢 {total_plastic} units  \n"
+            f"- **Total distance traveled:** 🔵 {total_distance} km  \n"
+            f"- **Average distance per day:** {avg_distance:.1f} km"
+        )
+
+        for d, (plastics, dist_steps) in enumerate(zip(plastic_by_day, distance_by_day_steps), start=1):
+            st.markdown(
+                f"**Day {d}:** Plastic = {sum(plastics)} ({'+'.join(map(str, plastics))})  |  "
+                f"Distance = {sum(dist_steps)} ({'+'.join(map(str, dist_steps))})"
+            )
+
         fig, pdf_bytes = draw_last_frame(
             GRID,
             rotation_days,
@@ -309,5 +326,6 @@ if st.button("Validate and Draw"):
             "application/pdf"
         )
     else:
-        st.error("❌ Invalid route")
-        st.warning(msg)
+        st.error("❌ Invalid route!")
+        st.markdown(f"**Reason:** {msg}")
+        st.info("Check your rotations: ensure the path stays inside the grid and daily distance ≤ max distance.")
