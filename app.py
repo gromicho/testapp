@@ -36,7 +36,7 @@ GRID = np.array([
 ])
 
 # ---------------------------------------------------------------------
-# Direction data
+# Richting- en stapdata
 # ---------------------------------------------------------------------
 DIR_VECTORS = [
     (-1, 0), (-1, 1), (0, 1), (1, 1),
@@ -49,27 +49,80 @@ DIR_TO_IDX = {
 }
 IDX_TO_DIR = {v: k for k, v in DIR_TO_IDX.items()}
 
+# ---------------------------------------------------------------------
+# Excel helpers
+# ---------------------------------------------------------------------
+def excel_to_coord(cell_ref):
+    cell_ref = cell_ref.strip().upper()
+    letters = ''.join(ch for ch in cell_ref if ch.isalpha())
+    digits = ''.join(ch for ch in cell_ref if ch.isdigit())
+    if not letters or not digits:
+        raise ValueError(f"Ongeldige celnotatie: {cell_ref}")
+    x = 0
+    for ch in letters:
+        x = x * 26 + (ord(ch) - 64)
+    x -= 1
+    y = int(digits) - 1
+    return (y, x)
+
+def coord_to_excel(y, x):
+    x += 1
+    letters = ''
+    while x > 0:
+        x, remainder = divmod(x - 1, 26)
+        letters = chr(65 + remainder) + letters
+    return f"{letters}{y + 1}"
+
+def expand_range(start_ref, end_ref):
+    y1, x1 = excel_to_coord(start_ref)
+    y2, x2 = excel_to_coord(end_ref)
+    coords = []
+    if y1 == y2:
+        step = 1 if x2 >= x1 else -1
+        for x in range(x1, x2 + step, step):
+            coords.append((y1, x))
+    elif x1 == x2:
+        step = 1 if y2 >= y1 else -1
+        for y in range(y1, y2 + step, step):
+            coords.append((y, x1))
+    else:
+        raise ValueError(f"Reeks {start_ref}:{end_ref} is niet rechtlijnig.")
+    return coords
 
 # ---------------------------------------------------------------------
-# Parse rotation input (-1, 0, 1)
+# Parser: detecteert automatisch Excel of rotatiecodes
 # ---------------------------------------------------------------------
-def parse_rotation_paths(text):
+def parse_input_auto(text):
     s = text.strip()
     if not s:
-        raise ValueError("Empty input.")
-    lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
-    all_days = []
-    for ln in lines:
-        normalized = ln.replace(';', ',')
-        if not normalized.startswith('['):
-            normalized = '[' + normalized + ']'
-        vals = ast.literal_eval(normalized)
-        vals = [int(v) for v in vals]
-        if not all(v in (-1, 0, 1) for v in vals):
-            raise ValueError(f"Invalid value in line: {ln}")
-        all_days.append(vals)
-    return all_days
+        raise ValueError("Lege invoer.")
 
+    if re.search(r'[A-Za-z]', s):  # Excel notatie
+        lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
+        all_days = []
+        for ln in lines:
+            parts = re.split(r'[,;\s]+', ln)
+            coords = []
+            for p in parts:
+                if not p:
+                    continue
+                if ':' in p:
+                    start, end = p.split(':')
+                    coords.extend(expand_range(start.strip(), end.strip()))
+                else:
+                    coords.append(excel_to_coord(p))
+            all_days.append(coords)
+        return 'excel', all_days
+
+    else:  # Rotatiecodes
+        lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
+        all_days = []
+        for ln in lines:
+            vals = [int(v) for v in re.split(r'[,;\s]+', ln) if v]
+            if not all(v in (-1, 0, 1) for v in vals):
+                raise ValueError(f"Ongeldige rotatiecode in regel: {ln}")
+            all_days.append(vals)
+        return 'rotation', all_days
 
 # ---------------------------------------------------------------------
 # Convert rotations to coordinates
@@ -85,11 +138,10 @@ def rotations_to_coords(start_cell, start_dir, rotations):
         coords.append((y, x))
     return coords, dir_idx
 
-
 # ---------------------------------------------------------------------
-# Validate route
+# Validate paths
 # ---------------------------------------------------------------------
-def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days, max_distance):
+def validate_paths(grid, day_paths, start_cell, start_dir, max_days, max_distance, mode):
     rows, cols = grid.shape
     visited = set()
     plastic_by_day = []
@@ -98,17 +150,22 @@ def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days
 
     y, x = start_cell
     if not (0 <= y < rows and 0 <= x < cols):
-        return False, "Start cell out of bounds", [], [], []
+        return False, f"Startcel {coord_to_excel(y, x)} buiten raster.", [], [], []
 
     dir_idx = DIR_TO_IDX[start_dir]
     visited.add(start_cell)
     prev_end = start_cell
     prev_dir = dir_idx
 
-    for d, rotations in enumerate(rotation_days, start=1):
-        if not rotations:
-            return False, f"Day {d} empty.", [], [], []
-        coords, new_dir = rotations_to_coords(prev_end, IDX_TO_DIR[prev_dir], rotations)
+    for d, day in enumerate(day_paths, start=1):
+        if not day:
+            return False, f"Dag {d} is leeg.", [], [], []
+
+        if mode == 'rotation':
+            coords, new_dir = rotations_to_coords(prev_end, IDX_TO_DIR[prev_dir], day)
+        else:
+            coords = day
+            new_dir = prev_dir
 
         dist = 0
         plastics = []
@@ -122,12 +179,14 @@ def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days
         for i in range(1, len(coords)):
             y1, x1 = coords[i]
             if not (0 <= y1 < rows and 0 <= x1 < cols):
-                return False, f"Day {d} step {i} out of bounds: {(y1, x1)}", [], [], []
+                return False, f"Dag {d} stap {i} buiten raster: {coord_to_excel(y1, x1)}.", [], [], []
             dy, dx = y1 - y0, x1 - x0
+            if (dy, dx) not in DIR_VECTORS:
+                return False, f"Dag {d} stap {i} ongeldig (geen toegestane richting).", [], [], []
             dir_idx = DIR_VECTORS.index((dy, dx))
             step_len = STEP_LENGTH[dir_idx]
             if dist + step_len > max_distance:
-                return False, f"Day {d} exceeds {max_distance} km (stopped at step {i}).", [], [], []
+                return False, f"Dag {d} overschrijdt {max_distance} km bij stap {i}.", [], [], []
             dist += step_len
             steps.append(step_len)
             if (y1, x1) not in visited:
@@ -141,17 +200,13 @@ def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days
         prev_end = coords[-1]
         prev_dir = new_dir
 
-    return True, "Route validated successfully", plastic_by_day, distance_by_day, distance_by_day_steps
-
+    return True, "Route is geldig.", plastic_by_day, distance_by_day, distance_by_day_steps
 
 # ---------------------------------------------------------------------
 # Draw Excel-style heatmap
 # ---------------------------------------------------------------------
-def draw_last_frame(grid, rotation_days, start_cell, start_dir,
-                    plastic_by_day, distance_by_day_steps):
+def draw_last_frame(grid, day_paths, start_cell, start_dir, plastic_by_day, distance_by_day_steps):
     n_rows, n_cols = grid.shape
-
-    # Column letters (A, B, ..., AD)
     col_labels = []
     for i in range(n_cols):
         div, mod = divmod(i, 26)
@@ -159,7 +214,6 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
         if div > 0:
             label = chr(64 + div) + label
         col_labels.append(label)
-    # Row numbers
     row_labels = [str(i + 1) for i in range(n_rows)]
 
     fig, ax = plt.subplots(figsize=(22, 18))
@@ -173,37 +227,30 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
         square=True,
         xticklabels=col_labels,
         yticklabels=row_labels,
-        annot_kws={"size": 16, "weight": "bold", "color": "black"}  # larger, bold numbers
+        annot_kws={"size": 16, "weight": "bold", "color": "black"}
     )
 
-    # Excel layout
     ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
     ax.xaxis.set_label_position('top')
-    ax.tick_params(axis="both", labelsize=10)
     ax.set_xlabel("")
     ax.set_ylabel("")
 
     cmap = plt.get_cmap("tab10")
-    day_color_map = {i: cmap(i % 10) for i in range(len(rotation_days))}
+    day_color_map = {i: cmap(i % 10) for i in range(len(day_paths))}
 
     move_counter = 0
     y, x = start_cell
     dir_idx = DIR_TO_IDX[start_dir]
 
-    for day_idx, rotations in enumerate(rotation_days):
+    for day_idx, day in enumerate(day_paths):
         color = day_color_map[day_idx]
-        coords, dir_idx = rotations_to_coords((y, x), IDX_TO_DIR[dir_idx], rotations)
-
-        for j in range(1, len(coords)):
-            (y0, x0), (y1, x1) = coords[j - 1], coords[j]
+        for j in range(1, len(day)):
+            (y0, x0), (y1, x1) = day[j - 1], day[j]
             x0c, y0c = x0 + 0.5, y0 + 0.5
             x1c, y1c = x1 + 0.5, y1 + 0.5
             xm, ym = (x0c + x1c) / 2, (y0c + y1c) / 2
-
             ax.annotate("", xy=(xm, ym), xytext=(x0c, y0c),
-                        arrowprops=dict(arrowstyle="->", color=color, lw=2),
-                        zorder=2)
-
+                        arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=2)
             move_counter += 1
             ax.text(x0c, y0c + 0.25, str(move_counter),
                     color="black", fontsize=8, ha="center", va="center",
@@ -212,48 +259,10 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
                               facecolor="white", edgecolor=color,
                               linewidth=0.8, alpha=0.9))
 
-            rect = patches.FancyBboxPatch(
-                (x0, y0), 1, 1,
-                boxstyle="round,pad=0.002,rounding_size=0.15",
-                linewidth=3, edgecolor=color, facecolor="none",
-                alpha=0.8, zorder=3 + day_idx
-            )
-            ax.add_patch(rect)
-
-        y, x = coords[-1]
-
-    # Start and End highlights
-    y_start, x_start = start_cell
-    start_rect = patches.FancyBboxPatch(
-        (x_start, y_start), 1, 1,
-        boxstyle="round,pad=0.002,rounding_size=0.15",
-        linewidth=3, edgecolor="green",
-        facecolor="none", alpha=0.8, zorder=10
-    )
-    ax.add_patch(start_rect)
-
-    last_y, last_x = y, x
-    last_color = day_color_map[len(rotation_days) - 1]
-    end_rect = patches.FancyBboxPatch(
-        (last_x, last_y), 1, 1,
-        boxstyle="round,pad=0.002,rounding_size=0.15",
-        linewidth=9, edgecolor=last_color,
-        facecolor="none", alpha=0.8, zorder=12
-    )
-    ax.add_patch(end_rect)
-
     plastic_total = sum(sum(p) for p in plastic_by_day)
     distance_total = sum(sum(d) for d in distance_by_day_steps)
-    ax.set_title(f"plastic = {plastic_total}    |    distance = {distance_total}",
+    ax.set_title(f"plastic = {plastic_total} | distance = {distance_total}",
                  fontsize=13, family="monospace", pad=15)
-
-    legend_handles = [
-        patches.Patch(color=day_color_map[i], label=f"Day {i + 1}")
-        for i in range(len(rotation_days))
-    ]
-    if legend_handles:
-        ax.legend(handles=legend_handles, loc="center left",
-                  bbox_to_anchor=(1, 0.5), fontsize=10, frameon=False)
 
     plt.tight_layout(pad=0)
     buf = BytesIO()
@@ -263,49 +272,38 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
     buf.close()
     return fig, pdf_bytes
 
-
 # ---------------------------------------------------------------------
-# Streamlit UI (Nederlandse versie)
+# Streamlit UI (NL)
 # ---------------------------------------------------------------------
-st.title("Validatie van de Rotatiecode-route – The Ocean Cleanup Challenge")
+st.title("Validatie van routes – The Ocean Cleanup Challenge")
 
-st.markdown(
-    "Deze applicatie controleert of jouw ingevoerde route geldig is volgens de "
-    "**regels van de Ocean Cleanup Challenge**. De route wordt ingevoerd als rotatiecodes "
-    "(-1, 0, 1), waarbij elke regel één dag voorstelt. "
-    "Het programma valideert de afstand, richting en verzameld plastic, "
-    "en toont daarna een visualisatie van de volledige vijfdaagse operatie."
-)
+st.markdown("""
+Gebruik dit hulpmiddel om je route te controleren:
+- 🔄 **Rotatie-invoer:** regels met `-1`, `0`, `1` (bochten links/rechtuit/rechts)
+- 📘 **Excel-invoer:** cellen of reeksen zoals `B3:E3` of `E3:E6`
 
-example = "0, 0, 1, 0, -1\n0, 1, 1, 0\n0, 0, 0"
-path_str = st.text_area(
-    "Voer de rotatiecodes per dag in (gebruik -1, 0 of 1, elke regel = één dag):",
-    example
-)
+Elke regel stelt één dag voor. Het programma detecteert automatisch het type invoer.
+""")
 
-start_y = st.number_input(
-    "Start-rij (y):", min_value=0, max_value=GRID.shape[0] - 1, value=0
-)
-start_x = st.number_input(
-    "Start-kolom (x):", min_value=0, max_value=GRID.shape[1] - 1, value=0
-)
+example = "B3:E3\nE3:E6\nE6:B6"
+path_str = st.text_area("Voer de route in (rotaties of cellen):", example)
+
+start_y = st.number_input("Start-rij (y):", 0, GRID.shape[0] - 1, 0)
+start_x = st.number_input("Start-kolom (x):", 0, GRID.shape[1] - 1, 0)
 start_dir = st.selectbox("Start-richting:", list(DIR_TO_IDX.keys()), index=2)
-max_days = st.number_input("Maximaal aantal dagen:", min_value=1, max_value=10, value=5)
-max_distance = st.number_input(
-    "Maximale afstand per dag (in km):", min_value=5, max_value=50, value=50
-)
+max_days = st.number_input("Maximaal aantal dagen:", 1, 10, 5)
+max_distance = st.number_input("Maximale afstand per dag (km):", 5, 50, 50)
 
 if st.button("Valideer en visualiseer route"):
     try:
-        rotation_days = parse_rotation_paths(path_str)
-        n_days = len(rotation_days)
-        st.info(f"📅 {n_days} dag{'en' if n_days > 1 else ''} succesvol ingelezen.")
+        mode, parsed = parse_input_auto(path_str)
+        st.info(f"🔍 Herkend als {'Excel-positie' if mode == 'excel' else 'rotatie'}-invoer ({len(parsed)} dagen).")
     except Exception as e:
-        st.error(f"❌ Fout bij het inlezen van de rotatiecodes: {e}")
+        st.error(f"Fout bij het inlezen van de invoer: {e}")
         st.stop()
 
-    ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_rotation_paths(
-        GRID, rotation_days, (start_y, start_x), start_dir, max_days, max_distance
+    ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_paths(
+        GRID, parsed, (start_y, start_x), start_dir, max_days, max_distance, mode
     )
 
     if ok:
@@ -313,50 +311,20 @@ if st.button("Valideer en visualiseer route"):
         total_distance = sum(sum(d) for d in distance_by_day_steps)
         avg_distance = np.mean(distance_by_day) if distance_by_day else 0
 
-        st.success("✅ De route is geldig en voldoet aan alle regels!")
+        st.success("✅ De route is geldig en voldoet aan alle regels.")
+        st.markdown(f"""
+        ### 📊 Prestatie-indicatoren
+        - **Aantal dagen:** {len(parsed)}
+        - **Totaal plastic:** 🟢 **{total_plastic}**
+        - **Totale afstand:** 🔵 **{total_distance} km**
+        - **Gemiddelde afstand per dag:** {avg_distance:.1f} km
+        """)
 
-        st.markdown(
-            f"### 📊 Resultaten en Prestatie-indicatoren (KPI’s)\n"
-            f"De ingevoerde route is gecontroleerd en voldoet aan de regels. "
-            f"Hieronder vind je een overzicht van de belangrijkste resultaten.\n\n"
-            f"- **Aantal dagen uitgevoerd:** {len(rotation_days)}  \n"
-            f"- **Totaal verzameld plastic:** 🟢 **{total_plastic} eenheden**  \n"
-            f"- **Totale afgelegde afstand:** 🔵 **{total_distance} km**  \n"
-            f"- **Gemiddelde afstand per dag:** {avg_distance:.1f} km\n\n"
-            f"💡 *Hoe meer plastic je verzamelt binnen de toegestane afstand, "
-            f"hoe beter je strategie is. Probeer een balans te vinden tussen afstand, "
-            f"richting en het vermijden van dubbele bezoeken.*"
-        )
-
-        st.markdown("### 📅 Dagelijkse details")
-        for d, (plastics, dist_steps) in enumerate(zip(plastic_by_day, distance_by_day_steps), start=1):
-            st.markdown(
-                f"- **Dag {d}:** Plastic = {sum(plastics)} ({'+'.join(map(str, plastics))})  "
-                f"| Afstand = {sum(dist_steps)} km ({'+'.join(map(str, dist_steps))})"
-            )
-
-        fig, pdf_bytes = draw_last_frame(
-            GRID,
-            rotation_days,
-            (start_y, start_x),
-            start_dir,
-            plastic_by_day,
-            distance_by_day_steps
-        )
-
+        fig, pdf_bytes = draw_last_frame(GRID, parsed, (start_y, start_x), start_dir,
+                                         plastic_by_day, distance_by_day_steps)
         st.pyplot(fig, clear_figure=True)
-
-        st.download_button(
-            "📥 Download laatste frame als PDF",
-            pdf_bytes,
-            "laatste_frame.pdf",
-            "application/pdf"
-        )
-
+        st.download_button("📥 Download visualisatie (PDF)", pdf_bytes,
+                           "cleanup_route.pdf", "application/pdf")
     else:
-        st.error("❌ Ongeldige route!")
-        st.markdown(f"**Reden:** {msg}")
-        st.info(
-            "Controleer of de route binnen het rooster blijft, geen te grote afstand per dag aflegt "
-            "en alleen toegestane richtingen gebruikt."
-        )
+        st.error("❌ Route ongeldig")
+        st.warning(msg)
