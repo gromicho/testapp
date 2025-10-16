@@ -425,7 +425,7 @@ def draw_last_frame(
     )
 
     # ---------------------------------------------------------------------
-    # Legenda horizontaal onderaan, grotere tekst
+    # Legenda horizontaal onderaan, dichter bij de figuur
     # ---------------------------------------------------------------------
     legend_handles = [
         patches.Patch(color=day_color_map[i], label=f'Dag {i + 1}')
@@ -435,22 +435,24 @@ def draw_last_frame(
     legend = ax.legend(
         handles=legend_handles,
         loc='upper center',
-        bbox_to_anchor=(0.5, -0.10),  # horizontaal onder de figuur
-        ncol=len(day_paths),           # alle dagen naast elkaar
-        fontsize=14,                   # grotere lettergrootte
+        bbox_to_anchor=(0.5, -0.035),  # dichter bij de onderkant van de figuur
+        ncol=len(day_paths),
+        fontsize=14,
         frameon=False
     )
 
-    # Grotere titel
+    # Grotere titel met Nederlandse labels
     ax.set_title(
         f'Startpositie: {start_excel} ({start_dir}) | '
         f'Totaal plastic (cumulatief): {plastic_total} | '
         f'Totale afstand: {distance_total} km',
-        fontsize=16, family='monospace', pad=20
+        fontsize=16,
+        family='monospace',
+        pad=18
     )
 
-    plt.tight_layout(pad=2)
-    
+    plt.tight_layout(pad=1.0)
+
     buf = BytesIO()
     plt.savefig(buf, format='pdf', bbox_inches='tight', pad_inches=0)
     buf.seek(0)
