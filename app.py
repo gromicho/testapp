@@ -435,9 +435,9 @@ def draw_last_frame(
     legend = ax.legend(
         handles=legend_handles,
         loc='upper center',
-        bbox_to_anchor=(0.5, -0.035),  # dichter bij de onderkant van de figuur
+        bbox_to_anchor=(0.5, -0.01),  # heel dichtbij de onderkant van de figuur
         ncol=len(day_paths),
-        fontsize=14,
+        fontsize=20,
         frameon=False
     )
 
@@ -446,7 +446,7 @@ def draw_last_frame(
         f'Startpositie: {start_excel} ({start_dir}) | '
         f'Totaal plastic (cumulatief): {plastic_total} | '
         f'Totale afstand: {distance_total} km',
-        fontsize=16,
+        fontsize=20,
         family='monospace',
         pad=18
     )
