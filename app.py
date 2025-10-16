@@ -246,19 +246,19 @@ def validate_paths(
         else:
             gain = 0
 
-        day_logs.append({
-            'step_no': 0,
-            'from': coord_to_excel(y0, x0),
-            'to': coord_to_excel(y0, x0),
-            'dir': IDX_TO_DIR[prev_dir_idx],
-            'turn': 'start',
-            'step_km': 0,
-            'cum_km': 0,
-            'plastic_gain': gain,
-            'plastic_cum_day': sum(day_plastics),
-            'plastic_cum_total': global_plastic_cum,
-            'revisit': gain == 0
-        })
+        # day_logs.append({
+        #     'step_no': 0,
+        #     'from': coord_to_excel(y0, x0),
+        #     'to': coord_to_excel(y0, x0),
+        #     'dir': IDX_TO_DIR[prev_dir_idx],
+        #     'turn': 'start',
+        #     'step_km': 0,
+        #     'cum_km': 0,
+        #     'plastic_gain': gain,
+        #     'plastic_cum_day': sum(day_plastics),
+        #     'plastic_cum_total': global_plastic_cum,
+        #     'revisit': gain == 0
+        # })
 
         prev_step_dir_idx = prev_dir_idx
         for i in range(1, len(coords)):
