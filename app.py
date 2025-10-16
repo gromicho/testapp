@@ -188,19 +188,16 @@ def validate_paths(
     max_distance: int,
     mode: str
 ) -> tuple[
-    bool,                 # ok
-    list[str],            # messages (errors or success notes)
-    list[list[int]],      # plastic_by_day (per new cell)
-    list[int],            # distance_by_day (total km per day)
-    list[list[int]],      # distance_by_day_steps (step km per day)
-    list[list[dict]]      # step_logs per day (detailed step-by-step)
+    bool,
+    list[str],
+    list[list[int]],
+    list[int],
+    list[list[int]],
+    list[list[dict]]
 ]:
     """
     Validate daily paths. Returns rich diagnostics and KPIs.
-
-    On failure, returns ok=False and a messages list where the first item
-    explains the exact reason. step_logs will include the steps up to the
-    failure for the failing day.
+    Tracks both per-day and global cumulative plastic.
     """
     rows, cols = grid.shape
     messages: list[str] = []
@@ -220,18 +217,18 @@ def validate_paths(
     if len(day_paths_raw) > max_days:
         return False, [f'Aantal opgegeven dagen ({len(day_paths_raw)}) overschrijdt maximum ({max_days}).'], [], [], [], []
 
+    global_plastic_cum = 0  # totale cumulatieve teller over alle dagen
+
     for d_idx, day_raw in enumerate(day_paths_raw, start=1):
         if not day_raw:
             return False, [f'Dag {d_idx} is leeg.'], [], [], [], []
 
-        # Build coordinates for this day
         if mode == 'rotation':
             coords, new_dir_idx = rotations_to_coords(prev_end, IDX_TO_DIR[prev_dir_idx], day_raw)
         else:
             coords = day_raw
             new_dir_idx = prev_dir_idx
 
-        # Initialize accumulators for this day
         day_dist = 0
         day_plastics: list[int] = []
         day_step_lengths: list[int] = []
@@ -240,10 +237,15 @@ def validate_paths(
         y0, x0 = coords[0]
         if not (0 <= y0 < rows and 0 <= x0 < cols):
             return False, [f'Dag {d_idx} start buiten raster: {coord_to_excel(y0, x0)}.'], [], [], [], []
-        # Collect plastic at first cell if first visit this day and overall
+
         if (y0, x0) not in visited:
-            day_plastics.append(int(grid[y0, x0]))
+            gain = int(grid[y0, x0])
+            day_plastics.append(gain)
             visited.add((y0, x0))
+            global_plastic_cum += gain
+        else:
+            gain = 0
+
         day_logs.append({
             'step_no': 0,
             'from': coord_to_excel(y0, x0),
@@ -252,9 +254,10 @@ def validate_paths(
             'turn': 'start',
             'step_km': 0,
             'cum_km': 0,
-            'plastic_gain': day_plastics[-1] if day_plastics else 0,
-            'plastic_cum': sum(day_plastics),
-            'revisit': False
+            'plastic_gain': gain,
+            'plastic_cum_day': sum(day_plastics),
+            'plastic_cum_total': global_plastic_cum,
+            'revisit': gain == 0
         })
 
         prev_step_dir_idx = prev_dir_idx
@@ -290,7 +293,6 @@ def validate_paths(
                 )
                 return False, [reason], plastic_by_day, distance_by_day, distance_by_day_steps, step_logs_all_days + [day_logs]
 
-            # Apply move
             day_dist += step_len
             day_step_lengths.append(step_len)
 
@@ -299,6 +301,7 @@ def validate_paths(
             if not revisit:
                 day_plastics.append(gain)
                 visited.add((y1, x1))
+                global_plastic_cum += gain
 
             day_logs.append({
                 'step_no': i,
@@ -309,7 +312,8 @@ def validate_paths(
                 'step_km': step_len,
                 'cum_km': day_dist,
                 'plastic_gain': gain,
-                'plastic_cum': sum(day_plastics),
+                'plastic_cum_day': sum(day_plastics),
+                'plastic_cum_total': global_plastic_cum,
                 'revisit': revisit
             })
 
@@ -320,12 +324,12 @@ def validate_paths(
         distance_by_day.append(day_dist)
         distance_by_day_steps.append(day_step_lengths)
         step_logs_all_days.append(day_logs)
-
         prev_end, prev_dir_idx = coords[-1], prev_step_dir_idx
 
     start_excel = coord_to_excel(*start_cell)
     messages.append(f'Route is geldig vanaf {start_excel}.')
     return True, messages, plastic_by_day, distance_by_day, distance_by_day_steps, step_logs_all_days
+
 
 # ---------------------------------------------------------------------
 # Visualization
