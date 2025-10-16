@@ -169,20 +169,51 @@ def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days
 # ---------------------------------------------------------------------
 # Draw last frame
 # ---------------------------------------------------------------------
-def draw_last_frame(grid, rotation_days, start_cell, start_dir):
-    fig, ax = plt.subplots(figsize=(20, 20))
-    sns.heatmap(grid, ax=ax, cmap="YlGnBu", annot=True, fmt="d", cbar=False, square=True)
+def draw_last_frame(grid, rotation_days, start_cell, start_dir,
+                    plastic_by_day, distance_by_day_steps):
+    """
+    Draw the final heatmap with Excel-style row/column labels,
+    colored paths, step numbering, legend, and totals.
+    """
+    n_rows, n_cols = grid.shape
+    col_labels = []
+    for i in range(n_cols):
+        div, mod = divmod(i, 26)
+        label = chr(65 + mod)
+        if div > 0:
+            label = chr(64 + div) + label
+        col_labels.append(label)
+    row_labels = [str(i + 1) for i in range(n_rows)]
+
+    fig, ax = plt.subplots(figsize=(22, 18))
+
+    sns.heatmap(grid,
+                ax=ax,
+                cmap="YlGnBu",
+                annot=True,
+                fmt="d",
+                cbar=False,
+                square=True,
+                xticklabels=col_labels,
+                yticklabels=row_labels)
+
     ax.invert_yaxis()
+    ax.tick_params(axis="both", labelsize=10)
+    ax.set_xlabel("")
+    ax.set_ylabel("")
 
     cmap = plt.get_cmap("tab10")
+    day_color_map = {i: cmap(i % 10) for i in range(len(rotation_days))}
+
     visited = set()
     move_counter = 0
     y, x = start_cell
     dir_idx = DIR_TO_IDX[start_dir]
 
     for day_idx, rotations in enumerate(rotation_days):
-        color = cmap(day_idx % 10)
+        color = day_color_map[day_idx]
         coords, dir_idx = rotations_to_coords((y, x), IDX_TO_DIR[dir_idx], rotations)
+
         for j in range(1, len(coords)):
             (y0, x0), (y1, x1) = coords[j - 1], coords[j]
             x0c, y0c = x0 + 0.5, y0 + 0.5
@@ -190,21 +221,73 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir):
             xm, ym = (x0c + x1c) / 2, (y0c + y1c) / 2
 
             ax.annotate("", xy=(xm, ym), xytext=(x0c, y0c),
-                        arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=2)
+                        arrowprops=dict(arrowstyle="->", color=color, lw=2),
+                        zorder=2)
+
             move_counter += 1
             ax.text(x0c, y0c + 0.25, str(move_counter),
-                    color="black", fontsize=8, ha="center", va="center", weight="bold",
+                    color="black", fontsize=8, ha="center", va="center",
+                    weight="bold", zorder=6,
                     bbox=dict(boxstyle="round,pad=0.15",
-                              facecolor="white", edgecolor=color, linewidth=0.8, alpha=0.9))
+                              facecolor="white", edgecolor=color,
+                              linewidth=0.8, alpha=0.9))
+
+            rect = patches.FancyBboxPatch(
+                (x0, y0), 1, 1,
+                boxstyle="round,pad=0.002,rounding_size=0.15",
+                linewidth=3, edgecolor=color, facecolor="none",
+                alpha=0.8, zorder=3 + day_idx
+            )
+            ax.add_patch(rect)
 
         y, x = coords[-1]
 
+    # Start cell highlight
+    y_start, x_start = start_cell
+    start_rect = patches.FancyBboxPatch(
+        (x_start, y_start), 1, 1,
+        boxstyle="round,pad=0.002,rounding_size=0.15",
+        linewidth=3, edgecolor="green",
+        facecolor="none", alpha=0.8, zorder=10
+    )
+    ax.add_patch(start_rect)
+
+    # End cell highlight
+    last_y, last_x = y, x
+    last_color = day_color_map[len(rotation_days) - 1]
+    end_rect = patches.FancyBboxPatch(
+        (last_x, last_y), 1, 1,
+        boxstyle="round,pad=0.002,rounding_size=0.15",
+        linewidth=9, edgecolor=last_color,
+        facecolor="none", alpha=0.8, zorder=12
+    )
+    ax.add_patch(end_rect)
+
+    # Totals in title
+    plastic_total = sum(sum(p) for p in plastic_by_day)
+    distance_total = sum(sum(d) for d in distance_by_day_steps)
+    ax.set_title(f"plastic = {plastic_total}    |    distance = {distance_total}",
+                 fontsize=13, family="monospace", pad=15)
+
+    # Legend
+    legend_handles = [
+        patches.Patch(color=day_color_map[i], label=f"Day {i + 1}")
+        for i in range(len(rotation_days))
+    ]
+    if legend_handles:
+        ax.legend(handles=legend_handles, loc="center left",
+                  bbox_to_anchor=(1, 0.5), fontsize=10, frameon=False)
+
+    # Tight layout for PDF inclusion
+    plt.tight_layout(pad=0)
     buf = BytesIO()
-    plt.savefig(buf, format="pdf", bbox_inches="tight")
+    plt.savefig(buf, format="pdf", bbox_inches="tight", pad_inches=0)
     buf.seek(0)
     pdf_bytes = buf.read()
     buf.close()
     return fig, pdf_bytes
+
+
 
 
 # ---------------------------------------------------------------------
