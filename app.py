@@ -499,7 +499,7 @@ st.markdown(
     'Elke regel stelt één dag voor. Alleen bochten van maximaal 45 graden zijn toegestaan.'
 )
 
-example = '''L6, K6, J7, I8, H9, H10
+example = '''G8, H9, H10
 H10, H11, I12, J13, K14, L15, M16
 M16, N16, O15, P14, Q13, R12, R11, R10
 R10, Q9, P8, O7, N6, M6, L6
