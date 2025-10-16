@@ -538,11 +538,11 @@ if st.button('Valideer en visualiseer'):
                 'to': [log['to'] for log in logs],
                 'dir': [log['dir'] for log in logs],
                 'turn': [log['turn'] for log in logs],
-                'step_km': [log['step_km'] for log in logs],
-                'cum_km': [log['cum_km'] for log in logs],
-                'plastic_gain': [log['plastic_gain'] for log in logs],
-                'plastic_cum_day': [log['plastic_cum_day'] for log in logs],
-                'plastic_cum_total': [log['plastic_cum_total'] for log in logs],
+                'dist': [log['step_km'] for log in logs],
+                'km': [log['cum_km'] for log in logs],
+                'gain': [log['plastic_gain'] for log in logs],
+                'day': [log['plastic_cum_day'] for log in logs],
+                'plastic': [log['plastic_cum_total'] for log in logs],
                 'revisit': [log['revisit'] for log in logs],
             })
 
