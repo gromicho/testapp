@@ -198,7 +198,39 @@ def validate_paths(
 ]:
     """
     Validate daily paths. Returns rich diagnostics and KPIs.
-    Tracks both per-day and global cumulative plastic.
+
+    Parameters
+    ----------
+    grid : np.ndarray
+        Plastic grid, integers per cell.
+    day_paths_raw : list
+        Parsed input. Rotation mode: list[list[int]] per day.
+        Excel mode: list[list[Coord]] per day, where each Coord is (y, x).
+    start_cell : Coord
+        Zero-based (row, col) tuple for the global start.
+    start_dir : str
+        Initial heading string in {'N','NE','E','SE','S','SW','W','NW'}.
+    max_days : int
+        Maximum number of allowed days.
+    max_distance : int
+        Maximum total distance per day, in km.
+    mode : str
+        Either 'rotation' or 'excel'.
+
+    Returns
+    -------
+    ok : bool
+        True if valid, False otherwise.
+    messages : list[str]
+        High-level messages or the first error encountered.
+    plastic_by_day : list[list[int]]
+        Per-day list of plastic gains at newly visited cells.
+    distance_by_day : list[int]
+        Per-day total distance.
+    distance_by_day_steps : list[list[int]]
+        Per-step distances per day.
+    step_logs_all_days : list[list[dict]]
+        Per-day detailed step logs.
     """
     rows, cols = grid.shape
     messages: list[str] = []
@@ -218,7 +250,7 @@ def validate_paths(
     if len(day_paths_raw) > max_days:
         return False, [f'Aantal opgegeven dagen ({len(day_paths_raw)}) overschrijdt maximum ({max_days}).'], [], [], [], []
 
-    global_plastic_cum = 0  # totale cumulatieve teller over alle dagen
+    global_plastic_cum = 0
 
     for d_idx, day_raw in enumerate(day_paths_raw, start=1):
         if not day_raw:
@@ -227,8 +259,20 @@ def validate_paths(
         if mode == 'rotation':
             coords, new_dir_idx = rotations_to_coords(prev_end, IDX_TO_DIR[prev_dir_idx], day_raw)
         else:
+            # Excel mode: user provides absolute cells.
             coords = day_raw
             new_dir_idx = prev_dir_idx
+
+            # NEW: enforce that the day starts where we expect.
+            if coords[0] != prev_end:
+                exp_cell = coord_to_excel(*prev_end)
+                got_cell = coord_to_excel(*coords[0])
+                reason = (
+                    f'Dag {d_idx} start op {got_cell}, maar verwacht werd {exp_cell}. '
+                    f'De eerste cel van elke dag moet gelijk zijn aan het eindpunt van de vorige dag '
+                    f'(of de globale start voor dag 1).'
+                )
+                return False, [reason], plastic_by_day, distance_by_day, distance_by_day_steps, step_logs_all_days
 
         day_dist = 0
         day_plastics: list[int] = []
@@ -244,22 +288,6 @@ def validate_paths(
             day_plastics.append(gain)
             visited.add((y0, x0))
             global_plastic_cum += gain
-        else:
-            gain = 0
-
-        # day_logs.append({
-        #     'step_no': 0,
-        #     'from': coord_to_excel(y0, x0),
-        #     'to': coord_to_excel(y0, x0),
-        #     'dir': IDX_TO_DIR[prev_dir_idx],
-        #     'turn': 'start',
-        #     'step_km': 0,
-        #     'cum_km': 0,
-        #     'plastic_gain': gain,
-        #     'plastic_cum_day': sum(day_plastics),
-        #     'plastic_cum_total': global_plastic_cum,
-        #     'revisit': gain == 0
-        # })
 
         prev_step_dir_idx = prev_dir_idx
         for i in range(1, len(coords)):
