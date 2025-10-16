@@ -346,8 +346,20 @@ if st.button('Valideer en visualiseer'):
             f'- Totaal plastic: **{total_plastic}**\n'
             f'- Totale afstand: **{total_distance} km**'
         )
-        fig, pdf_bytes = draw_last_frame(GRID, parsed, (int(start_y), int(start_x)),
-                                         start_dir, plastic_by_day, dist_steps)
+        # Convert rotation paths to coordinates for visualization
+        if mode == 'rotation':
+            coords_paths = []
+            end_cell = (int(start_y), int(start_x))
+            end_dir = start_dir
+            for rday in parsed:
+                coords, new_dir = rotations_to_coords(end_cell, end_dir, rday)
+                coords_paths.append(coords)
+                end_cell, end_dir = coords[-1], IDX_TO_DIR[new_dir]
+        else:
+            coords_paths = parsed
+
+        fig, pdf_bytes = draw_last_frame(GRID, coords_paths, (int(start_y), int(start_x)),
+                                        start_dir, plastic_by_day, dist_steps)
         st.pyplot(fig, clear_figure=True)
         pdf_filename = f'route_{start_cell_excel}.pdf'
         st.download_button('📥 Download als PDF', pdf_bytes, pdf_filename, 'application/pdf')
