@@ -418,10 +418,11 @@ def draw_last_frame(
     distance_total = sum(sum(d) for d in distance_by_day_steps)
     start_excel = coord_to_excel(*start_cell)
     ax.set_title(
-        f'Start = {start_excel} | Plastic = {plastic_total} | Distance = {distance_total}',
+        f'Startpositie: {start_excel} ({start_dir}) | '
+        f'Totaal plastic (cumulatief): {plastic_total} | '
+        f'Totale afstand: {distance_total} km',
         fontsize=13, family='monospace', pad=15
     )
-
     legend_handles = [patches.Patch(color=day_color_map[i], label=f'Dag {i + 1}')
                       for i in range(len(day_paths))]
     ax.legend(handles=legend_handles, loc='center left',
