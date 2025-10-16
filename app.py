@@ -541,10 +541,12 @@ if st.button('Valideer en visualiseer'):
                 'step_km': [log['step_km'] for log in logs],
                 'cum_km': [log['cum_km'] for log in logs],
                 'plastic_gain': [log['plastic_gain'] for log in logs],
-                'plastic_cum': [log['plastic_cum'] for log in logs],
+                'plastic_cum_day': [log['plastic_cum_day'] for log in logs],
+                'plastic_cum_total': [log['plastic_cum_total'] for log in logs],
                 'revisit': [log['revisit'] for log in logs],
             })
 
+    # Visualization
     fig, pdf_bytes = draw_last_frame(
         GRID, coords_paths, (int(start_y), int(start_x)),
         start_dir, plastic_by_day, dist_steps
