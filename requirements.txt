@@ -3,3 +3,4 @@ numpy
 matplotlib
 seaborn
 pandas
+XlsxWriter>=3.2.0
