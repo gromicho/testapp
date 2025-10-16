@@ -4,6 +4,7 @@
 import streamlit as st
 import numpy as np
 import seaborn as sns
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from io import BytesIO
@@ -487,6 +488,33 @@ start_dir = st.selectbox('Start-richting:', list(DIR_TO_IDX.keys()), index=2)
 max_days = st.number_input('Maximaal aantal dagen:', min_value=1, max_value=10, value=5, step=1)
 max_distance = st.number_input('Maximale afstand per dag (km):', min_value=5, max_value=50, value=50, step=1)
 
+import pandas as pd
+
+def create_excel_report_download(step_logs_all_days):
+    """
+    Maak een downloadbare Excel met één tabblad per dag.
+
+    Parameters
+    ----------
+    step_logs_all_days : list[list[dict]]
+        Lijst met per dag een lijst van logregels zoals gegenereerd door validate_paths().
+    """
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        for d_idx, day_logs in enumerate(step_logs_all_days, start=1):
+            if not day_logs:
+                continue
+            df = pd.DataFrame(day_logs)
+            sheet_name = f'Dag {d_idx}'
+            df.to_excel(writer, index=False, sheet_name=sheet_name)
+    buffer.seek(0)
+    st.download_button(
+        label='📘 Download volledige rapportage (Excel)',
+        data=buffer,
+        file_name='route_rapportage.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+
 if st.button('Valideer en visualiseer'):
     try:
         mode, parsed = parse_input_auto(path_str)
@@ -580,3 +608,6 @@ if st.button('Valideer en visualiseer'):
     st.pyplot(fig, clear_figure=True)
     pdf_filename = f'route_{start_cell_excel}.pdf'
     st.download_button('Download als PDF', pdf_bytes, pdf_filename, 'application/pdf')
+
+    # Excel-download per dag
+    create_excel_report_download(step_logs)
