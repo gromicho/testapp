@@ -317,12 +317,21 @@ if st.button("Validate and Draw"):
 
     if ok:
         st.success("✅ Route valid")
-        total_plastic = sum(sum(p) for p in plastic_by_day)
-        total_distance = sum(distance_by_day)
-        st.write(f"**Total plastic:** {total_plastic} | **Total distance:** {total_distance} km")
-        fig, pdf_bytes = draw_last_frame(GRID, rotation_days, (start_y, start_x), start_dir)
+        fig, pdf_bytes = draw_last_frame(
+            GRID,
+            rotation_days,
+            (start_y, start_x),
+            start_dir,
+            plastic_by_day,
+            distance_by_day_steps
+        )
         st.pyplot(fig, clear_figure=True)
-        st.download_button("Download last frame as PDF", pdf_bytes, "last_frame.pdf", "application/pdf")
+        st.download_button(
+            "Download last frame as PDF",
+            pdf_bytes,
+            "last_frame.pdf",
+            "application/pdf"
+        )
     else:
         st.error("❌ Invalid route")
         st.warning(msg)
