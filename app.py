@@ -163,9 +163,18 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
     row_labels = [str(i + 1) for i in range(n_rows)]
 
     fig, ax = plt.subplots(figsize=(22, 18))
-    sns.heatmap(grid, ax=ax, cmap="YlGnBu", annot=True, fmt="d",
-                cbar=False, square=True,
-                xticklabels=col_labels, yticklabels=row_labels)
+    sns.heatmap(
+        grid,
+        ax=ax,
+        cmap="YlGnBu",
+        annot=True,
+        fmt="d",
+        cbar=False,
+        square=True,
+        xticklabels=col_labels,
+        yticklabels=row_labels,
+        annot_kws={"size": 16, "weight": "bold"}  # larger, bold numbers
+    )
 
     # Excel layout
     ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
