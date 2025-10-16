@@ -410,20 +410,25 @@ st.markdown(
 example = 'B3:E3\nE3:F4\nF4:G5'
 path_str = st.text_area('Voer de route in:', example)
 
-start_y = st.number_input(
-    'Start-rij (y):',
-    min_value=0,
-    max_value=GRID.shape[0] - 1,
-    value=0,
+start_y_1b = st.number_input(
+    'Start-rij (Excel-index, 1-based):',
+    min_value=1,
+    max_value=GRID.shape[0],
+    value=1,
     step=1
 )
-start_x = st.number_input(
-    'Start-kolom (x):',
-    min_value=0,
-    max_value=GRID.shape[1] - 1,
-    value=0,
+start_x_1b = st.number_input(
+    'Start-kolom (Excel-index, 1-based):',
+    min_value=1,
+    max_value=GRID.shape[1],
+    value=1,
     step=1
 )
+
+# convert to zero-based for internal use
+start_y = start_y_1b - 1
+start_x = start_x_1b - 1
+
 start_dir = st.selectbox('Start-richting:', list(DIR_TO_IDX.keys()), index=2)
 
 max_days = st.number_input('Maximaal aantal dagen:', min_value=1, max_value=10, value=5, step=1)
