@@ -7,7 +7,6 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
 from io import BytesIO
-import re
 import ast
 
 # ---------------------------------------------------------------------
@@ -36,7 +35,6 @@ GRID = np.array([
     [4, 4, 0, 4, 0, 0, 0, 4, 4, 7, 4, 4, 0, 0, 0, 0, 7, 0, 0, 0, 11, 0, 4, 4, 4, 0, 0, 0, 0, 0]
 ])
 
-
 # ---------------------------------------------------------------------
 # Direction data
 # ---------------------------------------------------------------------
@@ -53,48 +51,30 @@ IDX_TO_DIR = {v: k for k, v in DIR_TO_IDX.items()}
 
 
 # ---------------------------------------------------------------------
-# Parsing rotation-based input
+# Parse rotation input (-1, 0, 1)
 # ---------------------------------------------------------------------
 def parse_rotation_paths(text):
-    """
-    Parse user input consisting of rotation codes (-1, 0, 1)
-    grouped by days. Each line represents one day.
-    Example:
-        0, 0, 1, 0, -1
-        0, 1, 0, 0
-    Returns a list of lists of ints.
-    """
     s = text.strip()
     if not s:
         raise ValueError("Empty input.")
-
     lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
     all_days = []
     for ln in lines:
-        try:
-            normalized = ln.replace(';', ',').replace('  ', ' ')
-            if not normalized.startswith('['):
-                normalized = '[' + normalized + ']'
-            vals = ast.literal_eval(normalized)
-            if isinstance(vals, (int, float)):
-                vals = [int(vals)]
-            vals = [int(v) for v in vals]
-            if not all(v in (-1, 0, 1) for v in vals):
-                raise ValueError
-            all_days.append(vals)
-        except Exception:
-            raise ValueError(f"Could not parse line: {ln}")
+        normalized = ln.replace(';', ',')
+        if not normalized.startswith('['):
+            normalized = '[' + normalized + ']'
+        vals = ast.literal_eval(normalized)
+        vals = [int(v) for v in vals]
+        if not all(v in (-1, 0, 1) for v in vals):
+            raise ValueError(f"Invalid value in line: {ln}")
+        all_days.append(vals)
     return all_days
 
 
 # ---------------------------------------------------------------------
-# Convert rotation codes to coordinates
+# Convert rotations to coordinates
 # ---------------------------------------------------------------------
 def rotations_to_coords(start_cell, start_dir, rotations):
-    """
-    Convert a list of rotation codes into a coordinate path.
-    Returns a list of (y, x) tuples.
-    """
     y, x = start_cell
     dir_idx = DIR_TO_IDX[start_dir]
     coords = [(y, x)]
@@ -107,7 +87,7 @@ def rotations_to_coords(start_cell, start_dir, rotations):
 
 
 # ---------------------------------------------------------------------
-# Validate and compute plastic collection
+# Validate route
 # ---------------------------------------------------------------------
 def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days, max_distance):
     rows, cols = grid.shape
@@ -126,7 +106,7 @@ def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days
     prev_dir = dir_idx
 
     for d, rotations in enumerate(rotation_days, start=1):
-        if len(rotations) == 0:
+        if not rotations:
             return False, f"Day {d} empty.", [], [], []
         coords, new_dir = rotations_to_coords(prev_end, IDX_TO_DIR[prev_dir], rotations)
 
@@ -144,8 +124,6 @@ def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days
             if not (0 <= y1 < rows and 0 <= x1 < cols):
                 return False, f"Day {d} step {i} out of bounds: {(y1, x1)}", [], [], []
             dy, dx = y1 - y0, x1 - x0
-            if (dy, dx) not in DIR_VECTORS:
-                return False, f"Day {d} invalid move {(dy, dx)}", [], [], []
             dir_idx = DIR_VECTORS.index((dy, dx))
             step_len = STEP_LENGTH[dir_idx]
             if dist + step_len > max_distance:
@@ -167,15 +145,13 @@ def validate_rotation_paths(grid, rotation_days, start_cell, start_dir, max_days
 
 
 # ---------------------------------------------------------------------
-# Draw last frame
+# Draw Excel-style heatmap
 # ---------------------------------------------------------------------
 def draw_last_frame(grid, rotation_days, start_cell, start_dir,
                     plastic_by_day, distance_by_day_steps):
-    """
-    Draw the final heatmap with Excel-style row/column labels,
-    colored paths, step numbering, legend, and totals.
-    """
     n_rows, n_cols = grid.shape
+
+    # Column letters (A, B, ..., AD)
     col_labels = []
     for i in range(n_cols):
         div, mod = divmod(i, 26)
@@ -183,21 +159,17 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
         if div > 0:
             label = chr(64 + div) + label
         col_labels.append(label)
+    # Row numbers
     row_labels = [str(i + 1) for i in range(n_rows)]
 
     fig, ax = plt.subplots(figsize=(22, 18))
+    sns.heatmap(grid, ax=ax, cmap="YlGnBu", annot=True, fmt="d",
+                cbar=False, square=True,
+                xticklabels=col_labels, yticklabels=row_labels)
 
-    sns.heatmap(grid,
-                ax=ax,
-                cmap="YlGnBu",
-                annot=True,
-                fmt="d",
-                cbar=False,
-                square=True,
-                xticklabels=col_labels,
-                yticklabels=row_labels)
-
-    ax.invert_yaxis()
+    # Excel layout
+    ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
+    ax.xaxis.set_label_position('top')
     ax.tick_params(axis="both", labelsize=10)
     ax.set_xlabel("")
     ax.set_ylabel("")
@@ -263,13 +235,11 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
     )
     ax.add_patch(end_rect)
 
-    # Totals in title
     plastic_total = sum(sum(p) for p in plastic_by_day)
     distance_total = sum(sum(d) for d in distance_by_day_steps)
     ax.set_title(f"plastic = {plastic_total}    |    distance = {distance_total}",
                  fontsize=13, family="monospace", pad=15)
 
-    # Legend
     legend_handles = [
         patches.Patch(color=day_color_map[i], label=f"Day {i + 1}")
         for i in range(len(rotation_days))
@@ -278,7 +248,6 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
         ax.legend(handles=legend_handles, loc="center left",
                   bbox_to_anchor=(1, 0.5), fontsize=10, frameon=False)
 
-    # Tight layout for PDF inclusion
     plt.tight_layout(pad=0)
     buf = BytesIO()
     plt.savefig(buf, format="pdf", bbox_inches="tight", pad_inches=0)
@@ -286,8 +255,6 @@ def draw_last_frame(grid, rotation_days, start_cell, start_dir,
     pdf_bytes = buf.read()
     buf.close()
     return fig, pdf_bytes
-
-
 
 
 # ---------------------------------------------------------------------
