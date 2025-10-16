@@ -37,17 +37,15 @@ GRID = np.array([
 ])
 
 # ---------------------------------------------------------------------
-# Richting- en stapdata
+# Directions and step lengths
 # ---------------------------------------------------------------------
 DIR_VECTORS = [
     (-1, 0), (-1, 1), (0, 1), (1, 1),
     (1, 0), (1, -1), (0, -1), (-1, -1)
 ]
 STEP_LENGTH = [5, 7, 5, 7, 5, 7, 5, 7]
-DIR_TO_IDX = {
-    "N": 0, "NE": 1, "E": 2, "SE": 3,
-    "S": 4, "SW": 5, "W": 6, "NW": 7
-}
+DIR_TO_IDX = {"N": 0, "NE": 1, "E": 2, "SE": 3,
+              "S": 4, "SW": 5, "W": 6, "NW": 7}
 IDX_TO_DIR = {v: k for k, v in DIR_TO_IDX.items()}
 
 # ---------------------------------------------------------------------
@@ -57,12 +55,7 @@ def excel_to_coord(cell_ref):
     cell_ref = cell_ref.strip().upper()
     letters = ''.join(ch for ch in cell_ref if ch.isalpha())
     digits = ''.join(ch for ch in cell_ref if ch.isdigit())
-    if not letters or not digits:
-        raise ValueError(f"Ongeldige celnotatie: {cell_ref}")
-    x = 0
-    for ch in letters:
-        x = x * 26 + (ord(ch) - 64)
-    x -= 1
+    x = sum((ord(ch) - 64) * (26 ** i) for i, ch in enumerate(letters[::-1])) - 1
     y = int(digits) - 1
     return (y, x)
 
@@ -77,28 +70,23 @@ def coord_to_excel(y, x):
 def expand_range(start_ref, end_ref):
     y1, x1 = excel_to_coord(start_ref)
     y2, x2 = excel_to_coord(end_ref)
-    coords = []
     if y1 == y2:
         step = 1 if x2 >= x1 else -1
-        for x in range(x1, x2 + step, step):
-            coords.append((y1, x))
+        return [(y1, x) for x in range(x1, x2 + step, step)]
     elif x1 == x2:
         step = 1 if y2 >= y1 else -1
-        for y in range(y1, y2 + step, step):
-            coords.append((y, x1))
+        return [(y, x1) for y in range(y1, y2 + step, step)]
     else:
         raise ValueError(f"Reeks {start_ref}:{end_ref} is niet rechtlijnig.")
-    return coords
 
 # ---------------------------------------------------------------------
-# Parser: detecteert automatisch Excel of rotatiecodes
+# Auto-detect Excel vs rotation input
 # ---------------------------------------------------------------------
 def parse_input_auto(text):
     s = text.strip()
     if not s:
         raise ValueError("Lege invoer.")
-
-    if re.search(r'[A-Za-z]', s):  # Excel notatie
+    if re.search(r'[A-Za-z]', s):
         lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
         all_days = []
         for ln in lines:
@@ -114,8 +102,7 @@ def parse_input_auto(text):
                     coords.append(excel_to_coord(p))
             all_days.append(coords)
         return 'excel', all_days
-
-    else:  # Rotatiecodes
+    else:
         lines = [ln.strip() for ln in s.splitlines() if ln.strip()]
         all_days = []
         for ln in lines:
@@ -140,38 +127,28 @@ def rotations_to_coords(start_cell, start_dir, rotations):
     return coords, dir_idx
 
 # ---------------------------------------------------------------------
-# Validate paths
+# Validate
 # ---------------------------------------------------------------------
 def validate_paths(grid, day_paths, start_cell, start_dir, max_days, max_distance, mode):
     rows, cols = grid.shape
     visited = set()
-    plastic_by_day = []
-    distance_by_day = []
-    distance_by_day_steps = []
-
+    plastic_by_day, distance_by_day, distance_by_day_steps = [], [], []
     y, x = start_cell
     if not (0 <= y < rows and 0 <= x < cols):
         return False, f"Startcel {coord_to_excel(y, x)} buiten raster.", [], [], []
-
     dir_idx = DIR_TO_IDX[start_dir]
     visited.add(start_cell)
-    prev_end = start_cell
-    prev_dir = dir_idx
+    prev_end, prev_dir = start_cell, dir_idx
 
     for d, day in enumerate(day_paths, start=1):
         if not day:
             return False, f"Dag {d} is leeg.", [], [], []
-
         if mode == 'rotation':
             coords, new_dir = rotations_to_coords(prev_end, IDX_TO_DIR[prev_dir], day)
         else:
-            coords = day
-            new_dir = prev_dir
+            coords, new_dir = day, prev_dir
 
-        dist = 0
-        plastics = []
-        steps = []
-
+        dist, plastics, steps = 0, [], []
         y0, x0 = coords[0]
         if (y0, x0) not in visited:
             plastics.append(int(grid[y0, x0]))
@@ -198,15 +175,15 @@ def validate_paths(grid, day_paths, start_cell, start_dir, max_days, max_distanc
         plastic_by_day.append(plastics)
         distance_by_day.append(dist)
         distance_by_day_steps.append(steps)
-        prev_end = coords[-1]
-        prev_dir = new_dir
+        prev_end, prev_dir = coords[-1], new_dir
 
     return True, "Route is geldig.", plastic_by_day, distance_by_day, distance_by_day_steps
 
 # ---------------------------------------------------------------------
-# Draw Excel-style heatmap
+# Rich visualization
 # ---------------------------------------------------------------------
-def draw_last_frame(grid, day_paths, start_cell, start_dir, plastic_by_day, distance_by_day_steps):
+def draw_last_frame(grid, day_paths, start_cell, start_dir,
+                    plastic_by_day, distance_by_day_steps):
     n_rows, n_cols = grid.shape
     col_labels = []
     for i in range(n_cols):
@@ -218,18 +195,10 @@ def draw_last_frame(grid, day_paths, start_cell, start_dir, plastic_by_day, dist
     row_labels = [str(i + 1) for i in range(n_rows)]
 
     fig, ax = plt.subplots(figsize=(22, 18))
-    sns.heatmap(
-        grid,
-        ax=ax,
-        cmap="YlGnBu",
-        annot=True,
-        fmt="d",
-        cbar=False,
-        square=True,
-        xticklabels=col_labels,
-        yticklabels=row_labels,
-        annot_kws={"size": 16, "weight": "bold", "color": "black"}
-    )
+    sns.heatmap(grid, ax=ax, cmap="YlGnBu", annot=True, fmt="d",
+                cbar=False, square=True,
+                xticklabels=col_labels, yticklabels=row_labels,
+                annot_kws={"size": 16, "weight": "bold"})
 
     ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
     ax.xaxis.set_label_position('top')
@@ -239,9 +208,7 @@ def draw_last_frame(grid, day_paths, start_cell, start_dir, plastic_by_day, dist
     cmap = plt.get_cmap("tab10")
     day_color_map = {i: cmap(i % 10) for i in range(len(day_paths))}
 
-    move_counter = 0
-    y, x = start_cell
-    dir_idx = DIR_TO_IDX[start_dir]
+    move_counter, y, x = 0, start_cell[0], start_cell[1]
 
     for day_idx, day in enumerate(day_paths):
         color = day_color_map[day_idx]
@@ -251,81 +218,91 @@ def draw_last_frame(grid, day_paths, start_cell, start_dir, plastic_by_day, dist
             x1c, y1c = x1 + 0.5, y1 + 0.5
             xm, ym = (x0c + x1c) / 2, (y0c + y1c) / 2
             ax.annotate("", xy=(xm, ym), xytext=(x0c, y0c),
-                        arrowprops=dict(arrowstyle="->", color=color, lw=2), zorder=2)
+                        arrowprops=dict(arrowstyle="->", color=color, lw=2),
+                        zorder=3)
             move_counter += 1
             ax.text(x0c, y0c + 0.25, str(move_counter),
-                    color="black", fontsize=8, ha="center", va="center",
-                    weight="bold", zorder=6,
-                    bbox=dict(boxstyle="round,pad=0.15",
-                              facecolor="white", edgecolor=color,
-                              linewidth=0.8, alpha=0.9))
+                    fontsize=8, ha="center", va="center",
+                    weight="bold", bbox=dict(boxstyle="round,pad=0.15",
+                                              facecolor="white", edgecolor=color,
+                                              linewidth=0.8, alpha=0.9), zorder=6)
+            rect = patches.FancyBboxPatch((x0, y0), 1, 1,
+                                          boxstyle="round,pad=0.002,rounding_size=0.15",
+                                          linewidth=3, edgecolor=color, facecolor="none",
+                                          alpha=0.8, zorder=4 + day_idx)
+            ax.add_patch(rect)
 
+    y_start, x_start = start_cell
+    ax.add_patch(patches.FancyBboxPatch((x_start, y_start), 1, 1,
+                                        boxstyle="round,pad=0.002,rounding_size=0.15",
+                                        linewidth=3, edgecolor="green",
+                                        facecolor="none", alpha=0.8, zorder=10))
+    last_y, last_x = day_paths[-1][-1]
+    last_color = day_color_map[len(day_paths) - 1]
+    ax.add_patch(patches.FancyBboxPatch((last_x, last_y), 1, 1,
+                                        boxstyle="round,pad=0.002,rounding_size=0.15",
+                                        linewidth=9, edgecolor=last_color,
+                                        facecolor="none", alpha=0.8, zorder=12))
     plastic_total = sum(sum(p) for p in plastic_by_day)
     distance_total = sum(sum(d) for d in distance_by_day_steps)
-    ax.set_title(f"plastic = {plastic_total} | distance = {distance_total}",
+    ax.set_title(f"plastic = {plastic_total}    |    distance = {distance_total}",
                  fontsize=13, family="monospace", pad=15)
 
+    legend_handles = [patches.Patch(color=day_color_map[i], label=f"Dag {i + 1}")
+                      for i in range(len(day_paths))]
+    ax.legend(handles=legend_handles, loc="center left",
+              bbox_to_anchor=(1, 0.5), fontsize=10, frameon=False)
     plt.tight_layout(pad=0)
     buf = BytesIO()
     plt.savefig(buf, format="pdf", bbox_inches="tight", pad_inches=0)
     buf.seek(0)
-    pdf_bytes = buf.read()
-    buf.close()
-    return fig, pdf_bytes
+    return fig, buf.read()
 
 # ---------------------------------------------------------------------
 # Streamlit UI (NL)
 # ---------------------------------------------------------------------
-st.title("Validatie van routes – The Ocean Cleanup Challenge")
-
+st.title("Validatie en Visualisatie van Routes – The Ocean Cleanup Challenge")
 st.markdown("""
-Gebruik dit hulpmiddel om je route te controleren:
-- 🔄 **Rotatie-invoer:** regels met `-1`, `0`, `1` (bochten links/rechtuit/rechts)
-- 📘 **Excel-invoer:** cellen of reeksen zoals `B3:E3` of `E3:E6`
+Je kunt routes invoeren als:
+- 🔄 **Rotatiecodes:** regels met `-1`, `0`, `1`
+- 📘 **Excel-cellen:** `B3:E3`, `E3:E6`
 
 Elke regel stelt één dag voor. Het programma detecteert automatisch het type invoer.
 """)
 
 example = "B3:E3\nE3:E6\nE6:B6"
-path_str = st.text_area("Voer de route in (rotaties of cellen):", example)
-
+path_str = st.text_area("Voer de route in:", example)
 start_y = st.number_input("Start-rij (y):", 0, GRID.shape[0] - 1, 0)
 start_x = st.number_input("Start-kolom (x):", 0, GRID.shape[1] - 1, 0)
 start_dir = st.selectbox("Start-richting:", list(DIR_TO_IDX.keys()), index=2)
 max_days = st.number_input("Maximaal aantal dagen:", 1, 10, 5)
 max_distance = st.number_input("Maximale afstand per dag (km):", 5, 50, 50)
 
-if st.button("Valideer en visualiseer route"):
+if st.button("Valideer en visualiseer"):
     try:
         mode, parsed = parse_input_auto(path_str)
-        st.info(f"🔍 Herkend als {'Excel-positie' if mode == 'excel' else 'rotatie'}-invoer ({len(parsed)} dagen).")
+        st.info(f"🔍 Herkend als {'Excel-positie' if mode == 'excel' else 'rotatie'}-invoer.")
     except Exception as e:
-        st.error(f"Fout bij het inlezen van de invoer: {e}")
+        st.error(f"Fout bij het inlezen: {e}")
         st.stop()
 
-    ok, msg, plastic_by_day, distance_by_day, distance_by_day_steps = validate_paths(
+    ok, msg, plastic_by_day, dist_by_day, dist_steps = validate_paths(
         GRID, parsed, (start_y, start_x), start_dir, max_days, max_distance, mode
     )
-
     if ok:
+        st.success("✅ Route geldig")
         total_plastic = sum(sum(p) for p in plastic_by_day)
-        total_distance = sum(sum(d) for d in distance_by_day_steps)
-        avg_distance = np.mean(distance_by_day) if distance_by_day else 0
-
-        st.success("✅ De route is geldig en voldoet aan alle regels.")
+        total_distance = sum(sum(d) for d in dist_steps)
         st.markdown(f"""
-        ### 📊 Prestatie-indicatoren
-        - **Aantal dagen:** {len(parsed)}
-        - **Totaal plastic:** 🟢 **{total_plastic}**
-        - **Totale afstand:** 🔵 **{total_distance} km**
-        - **Gemiddelde afstand per dag:** {avg_distance:.1f} km
+        ### 📊 KPI’s
+        - Dagen: {len(parsed)}
+        - Plastic totaal: **{total_plastic}**
+        - Afstand totaal: **{total_distance} km**
         """)
-
         fig, pdf_bytes = draw_last_frame(GRID, parsed, (start_y, start_x), start_dir,
-                                         plastic_by_day, distance_by_day_steps)
+                                         plastic_by_day, dist_steps)
         st.pyplot(fig, clear_figure=True)
-        st.download_button("📥 Download visualisatie (PDF)", pdf_bytes,
-                           "cleanup_route.pdf", "application/pdf")
+        st.download_button("📥 Download als PDF", pdf_bytes, "route.pdf", "application/pdf")
     else:
-        st.error("❌ Route ongeldig")
+        st.error("❌ Ongeldige route")
         st.warning(msg)
