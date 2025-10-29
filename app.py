@@ -480,6 +480,23 @@ def draw_last_frame(
         fontsize=20, family="monospace", pad=18
     )
 
+    # ---------------------------------------------------------------------
+    # Legenda horizontaal onderaan, dichter bij de figuur
+    # ---------------------------------------------------------------------
+    legend_handles = [
+        patches.Patch(color=day_color_map[i], label=f'Dag {i + 1}')
+        for i in range(len(day_paths))
+    ]
+
+    legend = ax.legend(
+        handles=legend_handles,
+        loc='upper center',
+        bbox_to_anchor=(0.5, -0.01),  # heel dichtbij de onderkant van de figuur
+        ncol=len(day_paths),
+        fontsize=20,
+        frameon=False
+    )
+
     plt.tight_layout(pad=1.0)
 
     buf = BytesIO()
