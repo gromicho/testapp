@@ -11,6 +11,7 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
+full = True  # Full version with all features.
 
 # ---------------------------------------------------------------------
 # Types (no "from typing import ..." to respect your preference)
@@ -548,6 +549,14 @@ def create_excel_report_download(step_logs_all_days: list[list[dict]], plastic_b
 # ---------------------------------------------------------------------
 st.title("Validatie en Visualisatie van Routes — The Ocean Cleanup Challenge")
 
+# Top-level mode switch
+full: bool = st.checkbox(
+    'Full mode',
+    value=True,
+    help='Uit: gebruik standaardwaarden (G5, E, max_afstand=50), '
+         'en leid max_dagen af uit het aantal niet-lege regels.'
+)
+
 st.markdown(
     "Gebruik dit hulpmiddel om je route te controleren:\n"
     "- Rotatiecodes: regels met -1, 0, 1\n"
@@ -559,28 +568,48 @@ st.markdown(
 
 # Example route (Excel mode)
 example = (
-    "G5, H6, I7\n"
-    "I7:I10\n"
-    "I10, H11, G12, F13, E14\n"
-    "E14:D14\n"
-    "D14, C13, B12"
+    "T11:U11,V10:Y10\n"
+    "Y10,Z11:Z13,AA14\n"
+    "AA14:AA17\n"
+    "AA17,AB18,AC19\n"
+    "AC19,AC20"
 )
 path_str = st.text_area("Voer de route in:", example, height=160)
 
 col_labels = make_excel_labels(GRID.shape[1])
 row_labels = [str(i + 1) for i in range(GRID.shape[0])]
 
-# Default to G5 facing East per brief
-start_col_letter = st.selectbox("Start-kolom:", col_labels, index=6)  # G
-start_row_label = st.selectbox("Start-rij:", row_labels, index=4)     # 5
-start_x = col_labels.index(start_col_letter)
-start_y = int(start_row_label) - 1
-start_cell_excel = f"{start_col_letter}{start_row_label}"
+# Defaults per brief
+default_start_col_letter = 'T'
+default_start_row_label = '11'
+default_start_dir = 'E'
+default_max_days = 5
+default_max_distance = 50
 
-start_dir = st.selectbox("Start-richting:", list(DIR_TO_IDX.keys()), index=2)  # E
-max_days = st.number_input("Maximaal aantal dagen:", min_value=1, max_value=10, value=5, step=1)
-max_distance = st.number_input("Maximale afstand per dag (km):", min_value=5, max_value=50, value=50, step=1)
-collect_start = st.checkbox("Verzamel plastic op de startcel (eenmalig)", value=True)
+if full:
+    # Interactive selection
+    start_col_letter = st.selectbox('Start-kolom:', col_labels, index=col_labels.index(default_start_col_letter))
+    start_row_label = st.selectbox('Start-rij:', row_labels, index=int(default_start_row_label) - 1)
+    start_x = col_labels.index(start_col_letter)
+    start_y = int(start_row_label) - 1
+    start_cell_excel = f'{start_col_letter}{start_row_label}'
+
+    start_dir = st.selectbox('Start-richting:', list(DIR_TO_IDX.keys()), index=DIR_TO_IDX[default_start_dir])
+    max_days = st.number_input('Maximaal aantal dagen:', min_value=1, max_value=10, value=default_max_days, step=1)
+    max_distance = st.number_input('Maximale afstand per dag (km):', min_value=5, max_value=50,
+                                   value=default_max_distance, step=1)
+else:
+    # Hidden inputs replaced by defaults and simple inference
+    start_col_letter = default_start_col_letter
+    start_row_label = default_start_row_label
+    start_x = col_labels.index(start_col_letter)
+    start_y = int(start_row_label) - 1
+    start_cell_excel = f'{start_col_letter}{start_row_label}'
+    start_dir = default_start_dir
+    max_days = default_max_days
+    max_distance = default_max_distance
+
+collect_start = True
 
 if st.button("Valideer en visualiseer"):
     try:
