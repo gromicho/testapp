@@ -649,15 +649,6 @@ full: bool = st.checkbox(
     help=f'Uit: gebruik standaardwaarden ({default_start_col_letter}{default_start_row_label}, {default_start_dir}, {default_max_distance}, {default_max_days}).'
 )
 
-st.markdown(
-    "Gebruik dit hulpmiddel om je route te controleren:\n"
-    "- Rotatiecodes: regels met -1, 0, 1\n"
-    "- Excel-cellen of -reeksen: zoals B3:E3, E3:E6\n\n"
-    "Elke regel stelt precies 1 dag voor. Alleen bochten van maximaal 45 graden zijn toegestaan.\n\n"
-    "**Belangrijk:** Elke dag start in dezelfde cel als waar de vorige dag eindigde, "
-    "en de eerste stap moet binnen 45 graden liggen van de eindrichting van de vorige dag."
-)
-
 # Kies de juiste tijdzone (automatisch CET/CEST)
 tz = pytz.timezone("Europe/Amsterdam")
 
@@ -668,6 +659,15 @@ nu = datetime.now(tz)
 st.write("📅 Datum:", nu.strftime("%Y-%m-%d"))
 st.write("⏰ Tijd in Nederland:", nu.strftime("%H:%M:%S %Z"))
 file_name_sufix = nu.strftime("%Y%m%d_%H%M%S")
+
+st.markdown(
+    "Gebruik dit hulpmiddel om je route te controleren:\n"
+    "- Rotatiecodes: regels met -1, 0, 1\n"
+    "- Excel-cellen of -reeksen: zoals B3:E3, E3:E6\n\n"
+    "Elke regel stelt precies 1 dag voor. Alleen bochten van maximaal 45 graden zijn toegestaan.\n\n"
+    "**Belangrijk:** Elke dag start in dezelfde cel als waar de vorige dag eindigde, "
+    "en de eerste stap moet binnen 45 graden liggen van de eindrichting van de vorige dag."
+)
 
 col_labels = make_excel_labels(GRID.shape[1])
 row_labels = [str(i + 1) for i in range(GRID.shape[0])]
