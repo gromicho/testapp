@@ -33,6 +33,43 @@ def figure_to_png_bytes(fig: plt.Figure) -> bytes:
     buf.seek(0)
     return buf.read()
 
+def ensure_render_assets(res: dict) -> dict:
+    """
+    Make sure 'png_bytes' and 'pdf_bytes' exist in the results dict.
+    If missing, rebuild them from stored paths and metadata.
+    """
+    need_png = 'png_bytes' not in res
+    need_pdf = 'pdf_bytes' not in res
+    if not (need_png or need_pdf):
+        return res
+
+    # Herleid startcel en richting
+    try:
+        start_cell = excel_to_coord(res.get('start_cell_excel', 'G5'))
+    except Exception:
+        # fallback: gebruik eerste coord van de eerste dag
+        start_cell = res['coords_paths'][0][0]
+    start_dir = res.get('start_dir', 'E')
+
+    # Render figuur opnieuw
+    fig, pdf_bytes = draw_last_frame(
+        GRID,
+        res['coords_paths'],
+        start_cell,
+        start_dir,
+        res['plastic_by_day'],
+        res['dist_steps']
+    )
+    png_bytes = figure_to_png_bytes(fig)
+    plt.close(fig)
+
+    if need_pdf:
+        res['pdf_bytes'] = pdf_bytes
+    if need_png:
+        res['png_bytes'] = png_bytes
+    return res
+
+
 # ---------------------------------------------------------------------
 # Types (no "from typing import ..." to respect your preference)
 # ---------------------------------------------------------------------
@@ -738,18 +775,39 @@ if st.button('Valideer en visualiseer'):
         'step_logs': step_logs,
         'pdf_bytes': pdf_bytes,
         'png_bytes': png_bytes,
-        'pdf_filename': f'route_{file_name_sufix}.pdf'
+        'pdf_filename': f'route_{file_name_sufix}.pdf',
+        'start_dir': start_dir  # NIEUW
     }
     st.session_state['validated'] = True
 
 # Render results if present, even after rerun (e.g., after a download)
 if st.session_state.get('validated'):
     res = st.session_state['results']
+    res = ensure_render_assets(res)
+    st.session_state['results'] = res  # terugschrijven
 
-    # Toon afbeelding uit bytes (blijft bestaan na rerun)
+    st.success('\n'.join(res['messages']))
+
+    total_plastic = sum(sum(p) for p in res['plastic_by_day'])
+    total_distance = sum(sum(d) for d in res['dist_steps'])
+    st.markdown(
+        f"### KPI overzicht\n"
+        f"- Startcel: **{res['start_cell_excel']}**\n"
+        f"- Dagen: {len(res['coords_paths'])}\n"
+        f"- Totaal plastic: **{total_plastic}**\n"
+        f"- Totale afstand: **{total_distance} km**"
+    )
+
+    with st.expander("Dagelijkse KPI's"):
+        for d_idx, (plastics, km, steps, logs) in enumerate(
+            zip(res['plastic_by_day'], res['dist_by_day'], res['dist_steps'], res['step_logs']), start=1
+        ):
+            st.markdown(f"**Dag {d_idx}** — plastic: {sum(plastics)}, afstand: {km} km, stappen: {len(steps)}")
+            st.dataframe(pd.DataFrame(logs))
+
+    # Toon stabiel uit bytes
     st.image(res['png_bytes'], caption='Laatste kaart met volledige route', use_column_width=True)
 
-    # Downloads
     st.download_button(
         'Download als PDF',
         res['pdf_bytes'],
