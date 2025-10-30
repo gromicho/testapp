@@ -604,6 +604,9 @@ collect_start = True
 from datetime import datetime
 import pytz
 
+from datetime import datetime
+import pytz
+
 # Kies de juiste tijdzone (automatisch CET/CEST)
 tz = pytz.timezone("Europe/Amsterdam")
 
@@ -613,6 +616,7 @@ nu = datetime.now(tz)
 # Toon in Streamlit
 st.write("📅 Datum:", nu.strftime("%Y-%m-%d"))
 st.write("⏰ Tijd (CET/CEST):", nu.strftime("%H:%M:%S %Z"))
+st.write("⏰ Tijd (CET/CEST):", nu.strftime("%Y%m%d_%H%M%S_%Z"))
 
 st.markdown(
     f"""
