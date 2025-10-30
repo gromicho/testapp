@@ -13,7 +13,16 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
-full = False  # Full version with all features.
+def init_state() -> None:
+    """
+    Ensure required keys exist in Streamlit session_state.
+    """
+    if 'validated' not in st.session_state:
+        st.session_state['validated'] = False
+    if 'results' not in st.session_state:
+        st.session_state['results'] = {}
+
+init_state()
 
 # ---------------------------------------------------------------------
 # Types (no "from typing import ..." to respect your preference)
@@ -592,7 +601,7 @@ full: bool = st.checkbox(
     'Full mode',
     value=True,
     help=f'Uit: gebruik standaardwaarden ({default_start_col_letter}{default_start_row_label}, {default_start_dir}, {default_max_distance}, {default_max_days}).'
-) if full else full
+)
 
 st.markdown(
     "Gebruik dit hulpmiddel om je route te controleren:\n"
@@ -661,74 +670,102 @@ example = (
 )
 path_str = st.text_area("Voer de route in:", example, height=160)
 
-if st.button("Valideer en visualiseer"):
+if st.button('Valideer en visualiseer'):
     try:
         mode, parsed = parse_input_auto(path_str)
-        st.info(f"Herkend als {'Excel-positie' if mode == 'excel' else 'rotatie'}-invoer.")
+        st.info(f'Herkend als {"Excel-positie" if mode == "excel" else "rotatie"}-invoer.')
     except Exception as e:
-        st.error(f"Fout bij het inlezen: {e}")
+        st.error(f'Fout bij het inlezen: {e}')
+        st.session_state['validated'] = False
         st.stop()
 
     ok, msgs, plastic_by_day, dist_by_day, dist_steps, step_logs = validate_paths(
-        GRID, parsed, (start_y, start_x), start_dir, int(max_days), int(max_distance), mode, collect_start_cell=collect_start
+        GRID, parsed, (start_y, start_x), start_dir,
+        int(max_days), int(max_distance), mode, collect_start_cell=collect_start
     )
 
     if not ok:
-        st.error("Ongeldige route")
+        st.error('Ongeldige route')
         for m in msgs:
             st.warning(m)
         if step_logs:
-            with st.expander("Details tot aan de fout"):
+            with st.expander('Details tot aan de fout'):
                 for d_idx, logs in enumerate(step_logs, start=1):
-                    st.markdown(f"**Dag {d_idx}**")
+                    st.markdown(f'**Dag {d_idx}**')
                     if not logs:
-                        st.write("Geen stappen geregistreerd.")
+                        st.write('Geen stappen geregistreerd.')
                         continue
                     st.dataframe(pd.DataFrame(logs))
+        st.session_state['validated'] = False
         st.stop()
 
-    # Success path
-    st.success("\n".join(msgs))
-
-    total_plastic = sum(sum(p) for p in plastic_by_day)
-    total_distance = sum(sum(d) for d in dist_steps)
-    st.markdown(
-        f"### KPI overzicht\n"
-        f"- Startcel: **{start_cell_excel}**\n"
-        f"- Dagen: {len(parsed)}\n"
-        f"- Totaal plastic: **{total_plastic}**\n"
-        f"- Totale afstand: **{total_distance} km**"
-    )
-
-    # If rotation mode, convert to coordinates for drawing
-    if mode == "rotation":
+    # Convert rotations to coordinates if needed
+    if mode == 'rotation':
         coords_paths: DaysCoords = []
         end_cell: Coord = (int(start_y), int(start_x))
         end_dir = start_dir
         for rday in parsed:
-            coords, new_dir = rotations_to_coords(end_cell, end_dir, rday)
+            coords, new_dir_idx = rotations_to_coords(end_cell, end_dir, rday)
             coords_paths.append(coords)
-            end_cell, end_dir = coords[-1], IDX_TO_DIR[new_dir]
+            end_cell, end_dir = coords[-1], IDX_TO_DIR[new_dir_idx]
     else:
-        coords_paths = parsed  # already coordinates
+        coords_paths = parsed
 
-    # Day-level KPIs
-    with st.expander("Dagelijkse KPI's"):
-        for d_idx, (plastics, km, steps, logs) in enumerate(
-            zip(plastic_by_day, dist_by_day, dist_steps, step_logs), start=1
-        ):
-            st.markdown(f"**Dag {d_idx}** — plastic: {sum(plastics)}, afstand: {km} km, stappen: {len(steps)}")
-            st.dataframe(pd.DataFrame(logs))
-
-    # Visualization
+    # Build final figure and PDF bytes once, store everything in session_state
     fig, pdf_bytes = draw_last_frame(
         GRID, coords_paths, (int(start_y), int(start_x)),
         start_dir, plastic_by_day, dist_steps
     )
-    st.pyplot(fig, clear_figure=True)
-    pdf_filename = f"route_{file_name_sufix}.pdf"
-    st.download_button("Download als PDF", pdf_bytes, pdf_filename, "application/pdf")
 
-    # Excel download
-    create_excel_report_download(step_logs, plastic_by_day, dist_by_day, dist_steps)
+    st.session_state['results'] = {
+        'messages': msgs,
+        'start_cell_excel': start_cell_excel,
+        'coords_paths': coords_paths,
+        'plastic_by_day': plastic_by_day,
+        'dist_by_day': dist_by_day,
+        'dist_steps': dist_steps,
+        'step_logs': step_logs,
+        'pdf_bytes': pdf_bytes,
+        'pdf_filename': f'route_{file_name_sufix}.pdf'
+    }
+    st.session_state['validated'] = True
 
+# Render results if present, even after rerun (e.g., after a download)
+if st.session_state.get('validated'):
+    res = st.session_state['results']
+    st.success('\n'.join(res['messages']))
+
+    total_plastic = sum(sum(p) for p in res['plastic_by_day'])
+    total_distance = sum(sum(d) for d in res['dist_steps'])
+    st.markdown(
+        f"### KPI overzicht\n"
+        f"- Startcel: **{res['start_cell_excel']}**\n"
+        f"- Dagen: {len(res['coords_paths'])}\n"
+        f"- Totaal plastic: **{total_plastic}**\n"
+        f"- Totale afstand: **{total_distance} km**"
+    )
+
+    with st.expander("Dagelijkse KPI's"):
+        for d_idx, (plastics, km, steps, logs) in enumerate(
+            zip(res['plastic_by_day'], res['dist_by_day'], res['dist_steps'], res['step_logs']), start=1
+        ):
+            st.markdown(f"**Dag {d_idx}** — plastic: {sum(plastics)}, afstand: {km} km, stappen: {len(steps)}")
+            st.dataframe(pd.DataFrame(logs))
+
+    # Show figure and download buttons; these survive reruns because data lives in session_state
+    st.pyplot(plt.gcf(), clear_figure=False)  # figure already created in draw_last_frame
+
+    st.download_button(
+        'Download als PDF',
+        res['pdf_bytes'],
+        res['pdf_filename'],
+        'application/pdf'
+    )
+
+    create_excel_report_download(
+        res['step_logs'],
+        res['plastic_by_day'],
+        res['dist_by_day'],
+        res['dist_steps'],
+        file_name_sufix=file_name_sufix
+    )
