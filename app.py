@@ -602,13 +602,17 @@ else:
 collect_start = True
 
 from datetime import datetime
+import pytz
 
-# Huidige tijd ophalen
-nu = datetime.now()
+# Kies de juiste tijdzone (automatisch CET/CEST)
+tz = pytz.timezone("Europe/Amsterdam")
 
-# Weergeven in Streamlit
-st.write("De huidige tijd is:", nu.strftime("%H:%M:%S"))
+# Huidige datum en tijd in die tijdzone
+nu = datetime.now(tz)
 
+# Toon in Streamlit
+st.write("📅 Datum:", nu.strftime("%Y-%m-%d"))
+st.write("⏰ Tijd (CET/CEST):", nu.strftime("%H:%M:%S %Z"))
 
 st.markdown(
     f"""
