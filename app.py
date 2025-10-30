@@ -145,6 +145,36 @@ def logs_to_df_nl(day_logs: list[dict]) -> pd.DataFrame:
     return df.reindex(columns=cols_present)
 
 
+def kpis_to_df_nl(
+    plastic_by_day: list[list[int]],
+    distance_by_day_km: list[int],
+    distance_by_day_steps: list[list[int]]
+) -> pd.DataFrame:
+    """
+    Bouw een NL KPI-overzicht per dag.
+
+    Parameters
+    ----------
+    plastic_by_day : list[list[int]]
+        Per dag de opgehaalde plasticwaarden per unieke cel.
+    distance_by_day_km : list[int]
+        Per dag de totale afstand in km.
+    distance_by_day_steps : list[list[int]]
+        Per dag de stap-lengtes (5 of 7), gebruikt voor aantal stappen.
+
+    Returns
+    -------
+    pd.DataFrame
+        Kolommen: dag, plastic, afstand, stappen (allemaal int).
+    """
+    rows: list[list[int]] = []
+    for d_idx, (plastics, km, steps_list) in enumerate(
+        zip(plastic_by_day, distance_by_day_km, distance_by_day_steps), start=1
+    ):
+        rows.append([int(d_idx), int(sum(plastics)), int(km), int(len(steps_list))])
+    return pd.DataFrame(rows, columns=['dag', 'plastic', 'afstand', 'stappen'])
+
+
 # ---------------------------------------------------------------------
 # Types (no "from typing import ..." to respect your preference)
 # ---------------------------------------------------------------------
@@ -903,13 +933,20 @@ if st.session_state.get('validated'):
 
     st.success('\n'.join(res['messages']))
 
-    total_plastic = sum(sum(p) for p in res['plastic_by_day'])
-    total_distance = sum(sum(d) for d in res['dist_steps'])
+    # NL KPI-overzicht als DataFrame
+    df_kpi_nl = kpis_to_df_nl(
+        res['plastic_by_day'],
+        res['dist_by_day'],
+        res['dist_steps']
+    )
+    st.markdown('### KPI overzicht')
+    st.dataframe(df_kpi_nl, use_container_width=True)
+
+    # Optioneel: totale sommen eronder
+    total_plastic = int(df_kpi_nl['plastic'].sum())
+    total_distance = int(df_kpi_nl['afstand'].sum())
     st.markdown(
-        f'### KPI overzicht\n'
-        f'- Startcel: **{res["start_cell_excel"]}**\n'
-        f'- Dagen: {len(res["coords_paths"])}\n'
-        f'- Totaal plastic: **{total_plastic}**\n'
+        f'- Totaal plastic: **{total_plastic}**  \n'
         f'- Totale afstand: **{total_distance} km**'
     )
 
