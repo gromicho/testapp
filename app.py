@@ -105,46 +105,6 @@ def ensure_render_assets(res: ResultsDict) -> ResultsDict:
     return res
 
 
-def logs_to_df_nl(day_logs: list[dict]) -> pd.DataFrame:
-    """
-    Convert a day's raw step logs to a DataFrame with short Dutch column names.
-
-    Parameters
-    ----------
-    day_logs : list[dict]
-        Raw step logs produced by validate_paths.
-
-    Returns
-    -------
-    pd.DataFrame
-        DataFrame with short Dutch headers in a consistent column order.
-    """
-    rename_map = {
-        'step_no': 'stap',
-        'from': 'van',
-        'to': 'naar',
-        'dir': 'richting',
-        'turn': 'bocht',
-        'step_km': 'km',
-        'cum_km': 'km_tot',
-        'plastic_gain': 'plastic',
-        'plastic_cum_day': 'plastic_dag',
-        'plastic_cum_total': 'plastic_tot',
-        'revisit': 'herhaal',
-    }
-    col_order = [
-        'stap', 'van', 'naar', 'richting', 'bocht',
-        'km', 'km_tot', 'plastic', 'plastic_dag', 'plastic_tot', 'herhaal'
-    ]
-
-    if not day_logs:
-        return pd.DataFrame(columns=col_order)
-
-    df = pd.DataFrame(day_logs).rename(columns=rename_map)
-    cols_present = [c for c in col_order if c in df.columns]
-    return df.reindex(columns=cols_present)
-
-
 def kpis_to_df_nl(
     plastic_by_day: list[list[int]],
     distance_by_day_km: list[int],
@@ -173,6 +133,60 @@ def kpis_to_df_nl(
     ):
         rows.append([int(d_idx), int(sum(plastics)), int(km), int(len(steps_list))])
     return pd.DataFrame(rows, columns=['dag', 'plastic', 'afstand', 'stappen'])
+
+
+def turn_to_nl(turn: str) -> str:
+    """
+    Vertaal de Engelstalige bochtcode naar NL.
+
+    Parameters
+    ----------
+    turn : str
+        'right', 'left' of 'straight'.
+
+    Returns
+    -------
+    str
+        'rechts', 'links' of 'rechtdoor'. Onbekende waarden gaan
+        ongewijzigd terug.
+    """
+    mapping = {'right': 'rechts', 'left': 'links', 'straight': 'rechtdoor'}
+    return mapping.get(str(turn), str(turn))
+
+
+def logs_to_df_nl(day_logs: list[dict]) -> pd.DataFrame:
+    """
+    Convert a day's raw step logs to a DataFrame with short Dutch column names.
+    """
+    rename_map = {
+        'step_no': 'stap',
+        'from': 'van',
+        'to': 'naar',
+        'dir': 'richting',
+        'turn': 'bocht',
+        'step_km': 'km',
+        'cum_km': 'km_tot',
+        'plastic_gain': 'plastic',
+        'plastic_cum_day': 'plastic_dag',
+        'plastic_cum_total': 'plastic_tot',
+        'revisit': 'herhaal',
+    }
+    col_order = [
+        'stap', 'van', 'naar', 'richting', 'bocht',
+        'km', 'km_tot', 'plastic', 'plastic_dag', 'plastic_tot', 'herhaal'
+    ]
+
+    if not day_logs:
+        return pd.DataFrame(columns=col_order)
+
+    df = pd.DataFrame(day_logs).rename(columns=rename_map)
+
+    # Vertaal bochtwaarden naar NL
+    if 'bocht' in df.columns:
+        df['bocht'] = df['bocht'].map(turn_to_nl)
+
+    cols_present = [c for c in col_order if c in df.columns]
+    return df.reindex(columns=cols_present)
 
 
 # ---------------------------------------------------------------------
@@ -715,11 +729,8 @@ def create_excel_report_download(
     file_name_suffix: str = ''
 ) -> None:
     """
-    Create a download button for an Excel report with short Dutch headers.
-    - Sheet 'Overzicht' with per-day plastic, distance, and steps
-    - One sheet per day with detailed step logs
+    Maak een downloadknop voor een Excel-rapport met korte NL-kolommen.
     """
-    # Short NL headers
     kpi_cols = ['dag', 'plastic', 'afstand', 'stappen']
     log_rename = {
         'step_no': 'stap',
@@ -741,26 +752,24 @@ def create_excel_report_download(
 
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        # Overview (KPI)
+        # Overzicht
         kpi_rows = []
         for d_idx, (plastics, km, steps_list) in enumerate(
             zip(plastic_by_day, distance_by_day_km, distance_by_day_steps), start=1
         ):
             kpi_rows.append([int(d_idx), int(sum(plastics)), int(km), int(len(steps_list))])
-
         if kpi_rows:
-            df_kpi = pd.DataFrame(kpi_rows, columns=kpi_cols)
-            df_kpi.to_excel(writer, index=False, sheet_name='Overzicht')
+            pd.DataFrame(kpi_rows, columns=kpi_cols).to_excel(writer, index=False, sheet_name='Overzicht')
 
-        # Per-day logs
+        # Dag-tabbladen
         for d_idx, day_logs in enumerate(step_logs_all_days, start=1):
             if day_logs:
                 df = pd.DataFrame(day_logs).rename(columns=log_rename)
-                cols_present = [c for c in log_order if c in df.columns]
-                df = df.reindex(columns=cols_present)
+                if 'bocht' in df.columns:
+                    df['bocht'] = df['bocht'].map(turn_to_nl)
+                df = df.reindex(columns=[c for c in log_order if c in df.columns])
             else:
                 df = pd.DataFrame(columns=log_order)
-
             df.to_excel(writer, index=False, sheet_name=f'Dag {d_idx}')
 
     buffer.seek(0)
@@ -770,7 +779,6 @@ def create_excel_report_download(
         file_name=f'route_rapportage_{file_name_suffix}.xlsx',
         mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-
 
 # ---------------------------------------------------------------------
 # Streamlit UI
