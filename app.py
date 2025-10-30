@@ -3,6 +3,8 @@
 
 import re
 from io import BytesIO
+from datetime import datetime
+import pytz
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -577,12 +579,18 @@ def create_excel_report_download(
 # ---------------------------------------------------------------------
 st.title("Validatie en Visualisatie van Routes — The Ocean Cleanup Challenge")
 
+# Defaults per brief
+default_start_col_letter = 'T'
+default_start_row_label = '11'
+default_start_dir = 'E'
+default_max_days = 5
+default_max_distance = 50
+
 # Top-level mode switch
 full: bool = st.checkbox(
     'Full mode',
     value=True,
-    help='Uit: gebruik standaardwaarden (G5, E, max_afstand=50), '
-         'en leid max_dagen af uit het aantal niet-lege regels.'
+    help=f'Uit: gebruik standaardwaarden ({default_start_col_letter}{default_start_row_label}, {default_start_dir}, max_afstand={default_max_distance}), max_dagen={default_max_days}.'
 )
 
 st.markdown(
@@ -596,13 +604,6 @@ st.markdown(
 
 col_labels = make_excel_labels(GRID.shape[1])
 row_labels = [str(i + 1) for i in range(GRID.shape[0])]
-
-# Defaults per brief
-default_start_col_letter = 'T'
-default_start_row_label = '11'
-default_start_dir = 'E'
-default_max_days = 5
-default_max_distance = 50
 
 if full:
     # Interactive selection
@@ -628,12 +629,6 @@ else:
     max_distance = default_max_distance
 
 collect_start = True
-
-from datetime import datetime
-import pytz
-
-from datetime import datetime
-import pytz
 
 # Kies de juiste tijdzone (automatisch CET/CEST)
 tz = pytz.timezone("Europe/Amsterdam")
@@ -734,4 +729,5 @@ if st.button("Valideer en visualiseer"):
     st.download_button("Download als PDF", pdf_bytes, pdf_filename, "application/pdf")
 
     # Excel download
-    create_excel_report_download(step_logs, plastic_by_day, dist_by_day)
+    create_excel_report_download(step_logs, plastic_by_day, dist_by_day, dist_steps)
+
