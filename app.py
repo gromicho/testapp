@@ -509,40 +509,68 @@ def draw_last_frame(
 # ---------------------------------------------------------------------
 # Excel reporting
 # ---------------------------------------------------------------------
-def create_excel_report_download(step_logs_all_days: list[list[dict]], plastic_by_day: list[list[int]], dist_by_day: list[int]) -> None:
+def create_excel_report_download(
+    step_logs_all_days: list[list[dict]],
+    plastic_by_day: list[list[int]],
+    distance_by_day_km: list[int],
+    distance_by_day_steps: list[list[int]]
+) -> None:
     """
-    Create a download button for an Excel file with one sheet per day and a KPI summary.
+    Create a download button for an Excel report:
+    - Sheet 'KPI' with per-day plastic, distance, and steps
+    - One sheet per day with detailed step logs
+
+    Parameters
+    ----------
+    step_logs_all_days : list[list[dict]]
+        Per-day detailed logs produced by validate_paths.
+    plastic_by_day : list[list[int]]
+        Per-day list of plastic gains, one entry per visited cell that yields plastic.
+    distance_by_day_km : list[int]
+        Per-day total distance in km.
+    distance_by_day_steps : list[list[int]]
+        Per-day list of step lengths (5 or 7), used to count the number of moves.
+
+    Returns
+    -------
+    None
+        Adds a Streamlit download button for the Excel file.
     """
     buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        # Summary
+    with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+        # KPI summary
         kpi_rows = []
-        for d_idx, (p_list, km) in enumerate(zip(plastic_by_day, dist_by_day), start=1):
+        for d_idx, (plastics, km, steps_list) in enumerate(
+            zip(plastic_by_day, distance_by_day_km, distance_by_day_steps), start=1
+        ):
             kpi_rows.append({
-                "day": d_idx,
-                "plastic": sum(p_list),
-                "distance_km": km,
-                "steps": len(p_list) + max(0, km)  # steps here is a placeholder, optional to adjust
+                'day': d_idx,
+                'plastic': int(sum(plastics)),
+                'distance_km': int(km),
+                'steps': int(len(steps_list))
             })
+
         if kpi_rows:
-            df_kpi = pd.DataFrame(kpi_rows, columns=["day", "plastic", "distance_km", "steps"])
-            df_kpi.to_excel(writer, index=False, sheet_name="KPI")
+            df_kpi = pd.DataFrame(kpi_rows, columns=['day', 'plastic', 'distance_km', 'steps'])
+            df_kpi.to_excel(writer, index=False, sheet_name='KPI')
 
         # Per-day logs
         for d_idx, day_logs in enumerate(step_logs_all_days, start=1):
             df = pd.DataFrame(day_logs) if day_logs else pd.DataFrame(
-                columns=["step_no", "from", "to", "dir", "turn", "step_km", "cum_km",
-                         "plastic_gain", "plastic_cum_day", "plastic_cum_total", "revisit"]
+                columns=[
+                    'step_no', 'from', 'to', 'dir', 'turn', 'step_km', 'cum_km',
+                    'plastic_gain', 'plastic_cum_day', 'plastic_cum_total', 'revisit'
+                ]
             )
-            df.to_excel(writer, index=False, sheet_name=f"Dag {d_idx}")
+            df.to_excel(writer, index=False, sheet_name=f'Dag {d_idx}')
+
     buffer.seek(0)
     st.download_button(
-        label="Download volledige rapportage (Excel)",
+        label='Download volledige rapportage (Excel)',
         data=buffer,
-        file_name="route_rapportage.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        file_name='route_rapportage.xlsx',
+        mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-
 
 # ---------------------------------------------------------------------
 # Streamlit UI
