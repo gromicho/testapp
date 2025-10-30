@@ -1,10 +1,10 @@
 # app.py
-# Python 3.12 — ASCII only, PEP8 compliant.
+# Python 3.12 - ASCII only, PEP8 compliant.
 
 import re
 from io import BytesIO
 from datetime import datetime
-import pytz
+from zoneinfo import ZoneInfo
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -47,7 +47,10 @@ def figure_to_png_bytes(fig: plt.Figure) -> bytes:
     return buf.read()
 
 
-def ensure_render_assets(res: dict) -> dict:
+ResultsDict = dict[str, object]
+
+
+def ensure_render_assets(res: ResultsDict) -> ResultsDict:
     """
     Ensure 'png_bytes' and 'pdf_bytes' exist in results.
     Idempotent: returns the same dict with any missing render bytes added.
@@ -62,22 +65,27 @@ def ensure_render_assets(res: dict) -> dict:
     dict
         The same dictionary, with 'png_bytes' and/or 'pdf_bytes' present.
     """
+    if not isinstance(res, dict):
+        return res
+
     need_png = 'png_bytes' not in res
     need_pdf = 'pdf_bytes' not in res
     if not (need_png or need_pdf):
         return res
 
     # Guard: nothing to render
-    if not res.get('coords_paths'):
+    if 'coords_paths' not in res or not res.get('coords_paths'):
+        return res
+    if 'plastic_by_day' not in res or 'dist_steps' not in res:
         return res
 
     # Derive start cell and direction
     try:
-        start_cell = excel_to_coord(res.get('start_cell_excel', 'G5'))
+        start_cell = excel_to_coord(str(res.get('start_cell_excel', 'G5')))
     except Exception:
         start_cell = res['coords_paths'][0][0]
 
-    start_dir = res.get('start_dir', 'E')
+    start_dir = str(res.get('start_dir', 'E'))
 
     fig, pdf_bytes = draw_last_frame(
         GRID,
@@ -95,6 +103,46 @@ def ensure_render_assets(res: dict) -> dict:
     if need_png:
         res['png_bytes'] = png_bytes
     return res
+
+
+def logs_to_df_nl(day_logs: list[dict]) -> pd.DataFrame:
+    """
+    Convert a day's raw step logs to a DataFrame with short Dutch column names.
+
+    Parameters
+    ----------
+    day_logs : list[dict]
+        Raw step logs produced by validate_paths.
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with short Dutch headers in a consistent column order.
+    """
+    rename_map = {
+        'step_no': 'stap',
+        'from': 'van',
+        'to': 'naar',
+        'dir': 'richting',
+        'turn': 'bocht',
+        'step_km': 'km',
+        'cum_km': 'km_tot',
+        'plastic_gain': 'plastic',
+        'plastic_cum_day': 'plastic_dag',
+        'plastic_cum_total': 'plastic_tot',
+        'revisit': 'herhaal',
+    }
+    col_order = [
+        'stap', 'van', 'naar', 'richting', 'bocht',
+        'km', 'km_tot', 'plastic', 'plastic_dag', 'plastic_tot', 'herhaal'
+    ]
+
+    if not day_logs:
+        return pd.DataFrame(columns=col_order)
+
+    df = pd.DataFrame(day_logs).rename(columns=rename_map)
+    cols_present = [c for c in col_order if c in df.columns]
+    return df.reindex(columns=cols_present)
 
 
 # ---------------------------------------------------------------------
@@ -219,7 +267,7 @@ def make_excel_labels(n_cols: int) -> list[str]:
 # ---------------------------------------------------------------------
 # Parser
 # ---------------------------------------------------------------------
-def parse_input_auto(text: str) -> tuple[str, list]:
+def parse_input_auto(text: str) -> tuple[str, DaysCoords | DaysRotations]:
     """
     Detect Excel- or rotation-style input, return ('excel'|'rotation', parsed).
     Excel: each line contains cells and ranges like A1, B2:D2.
@@ -447,8 +495,8 @@ def validate_paths(
             if day_dist + step_len > max_distance:
                 reason = (
                     f'Dag {d_idx} stap {i}: daglimiet {max_distance} km overschreden '
-                    f'({day_dist} + {step_len} km) bij verplaatsing '
-                    f'{coord_to_excel(y0, x0)} -> {coord_to_excel(y1, x1)}.'
+                    f'({day_dist} + {step_len} km, na stap totaal {day_dist + step_len} km). '
+                    f'Van {coord_to_excel(y0, x0)} naar {coord_to_excel(y1, x1)}.'
                 )
                 return False, [reason], plastic_by_day, distance_by_day, distance_by_day_steps, step_logs_all_days + [day_logs]
 
@@ -637,11 +685,11 @@ def create_excel_report_download(
     file_name_suffix: str = ''
 ) -> None:
     """
-    Maak een downloadknop voor een Excel-rapport met korte NL-kolommen.
-    - Tabblad 'Overzicht' met per-dag plastic, afstand en stappen
-    - Per dag een tabblad met detailstappen
+    Create a download button for an Excel report with short Dutch headers.
+    - Sheet 'Overzicht' with per-day plastic, distance, and steps
+    - One sheet per day with detailed step logs
     """
-    # Korte NL-kopjes
+    # Short NL headers
     kpi_cols = ['dag', 'plastic', 'afstand', 'stappen']
     log_rename = {
         'step_no': 'stap',
@@ -656,7 +704,6 @@ def create_excel_report_download(
         'plastic_cum_total': 'plastic_tot',
         'revisit': 'herhaal',
     }
-    # Gewenste kolomvolgorde in dag-tabs
     log_order = [
         'stap', 'van', 'naar', 'richting', 'bocht',
         'km', 'km_tot', 'plastic', 'plastic_dag', 'plastic_tot', 'herhaal'
@@ -664,7 +711,7 @@ def create_excel_report_download(
 
     buffer = BytesIO()
     with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-        # Overzicht (KPI)
+        # Overview (KPI)
         kpi_rows = []
         for d_idx, (plastics, km, steps_list) in enumerate(
             zip(plastic_by_day, distance_by_day_km, distance_by_day_steps), start=1
@@ -673,14 +720,12 @@ def create_excel_report_download(
 
         if kpi_rows:
             df_kpi = pd.DataFrame(kpi_rows, columns=kpi_cols)
-            # Hernoem tabblad naar NL; wil je Engels houden, gebruik sheet_name='KPI'
             df_kpi.to_excel(writer, index=False, sheet_name='Overzicht')
 
-        # Per-dag logs
+        # Per-day logs
         for d_idx, day_logs in enumerate(step_logs_all_days, start=1):
             if day_logs:
                 df = pd.DataFrame(day_logs).rename(columns=log_rename)
-                # Zorg voor consistente volgorde, val terug op aanwezige kolommen
                 cols_present = [c for c in log_order if c in df.columns]
                 df = df.reindex(columns=cols_present)
             else:
@@ -696,13 +741,14 @@ def create_excel_report_download(
         mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 
+
 # ---------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------
-st.title('Validatie en Visualisatie van Routes — The Ocean Cleanup Challenge')
+st.title('Validatie en Visualisatie van Routes - The Ocean Cleanup Challenge')
 
-# Timestamp suffix for filenames
-tz = pytz.timezone('Europe/Amsterdam')
+# Timestamp suffix for filenames (Europe/Amsterdam via zoneinfo)
+tz = ZoneInfo('Europe/Amsterdam')
 now_nl = datetime.now(tz)
 file_name_suffix = now_nl.strftime('%Y%m%d_%H%M%S')
 
@@ -717,19 +763,23 @@ default_max_distance = 50
 full: bool = st.checkbox(
     'Full mode',
     value=False,
-    help=f'Uit: gebruik standaardwaarden ({default_start_col_letter}{default_start_row_label}, {default_start_dir}, {default_max_distance}, {default_max_days}).'
+    help=(
+        'Uit: gebruik standaardwaarden '
+        f'({default_start_col_letter}{default_start_row_label}, '
+        f'{default_start_dir}, {default_max_distance}, {default_max_days}).'
+    )
 )
 
 # Timestamp info
-st.write('📅 Datum:', now_nl.strftime('%Y-%m-%d'))
-st.write('⏰ Tijd in Nederland:', now_nl.strftime('%H:%M:%S %Z'))
+st.write('Datum:', now_nl.strftime('%Y-%m-%d'))
+st.write('Tijd in Nederland:', now_nl.strftime('%H:%M:%S %Z'))
 
 st.markdown(
     'Gebruik dit hulpmiddel om je route te controleren:\n'
     '- Rotatiecodes: regels met -1, 0, 1\n'
     '- Excel-cellen of -reeksen: zoals B3:E3, E3:E6\n\n'
     'Elke regel stelt precies 1 dag voor. Alleen bochten van maximaal 45 graden zijn toegestaan.\n\n'
-    '**Belangrijk:** Elke dag start in dezelfde cel als waar de vorige dag eindigde, '
+    'Belangrijk: Elke dag start in dezelfde cel als waar de vorige dag eindigde, '
     'en de eerste stap moet binnen 45 graden liggen van de eindrichting van de vorige dag.'
 )
 
@@ -750,7 +800,7 @@ if full:
         'Maximale afstand per dag (km):', min_value=5, max_value=50, value=default_max_distance, step=1
     )
 else:
-    # Hidden inputs replaced by defaults and simple inference
+    # Hidden inputs replaced by defaults
     start_col_letter = default_start_col_letter
     start_row_label = default_start_row_label
     start_x = col_labels.index(start_col_letter)
@@ -763,12 +813,12 @@ else:
 collect_start = True
 
 st.markdown(
-    f'''
-    De route moet beginnen in **{start_col_letter}{start_row_label}**, 
-    in de richting **{start_dir} ±45°**.  
-    De route mag uit maximaal **{max_days} dagen** bestaan (één per regel in het invoerveld).  
-    Elke dag mag maximaal **{max_distance} km** afleggen.
-    '''
+    (
+        f'De route moet beginnen in **{start_col_letter}{start_row_label}**, '
+        f'in de richting **{start_dir} +/-45 graden**.  \n'
+        f'De route mag uit maximaal **{max_days} dagen** bestaan (een per regel in het invoerveld).  \n'
+        f'Elke dag mag maximaal **{max_distance} km** afleggen.'
+    )
 )
 
 # Example route (Excel mode)
@@ -806,7 +856,7 @@ if st.button('Valideer en visualiseer'):
                     if not logs:
                         st.write('Geen stappen geregistreerd.')
                         continue
-                    st.dataframe(pd.DataFrame(logs))
+                    st.dataframe(logs_to_df_nl(logs), use_container_width=True)
         st.session_state['validated'] = False
         st.stop()
 
@@ -828,7 +878,7 @@ if st.button('Valideer en visualiseer'):
         start_dir, plastic_by_day, dist_steps
     )
     png_bytes = figure_to_png_bytes(fig)
-    plt.close(fig)  # release figure memory
+    plt.close(fig)
 
     st.session_state['results'] = {
         'messages': msgs,
@@ -863,12 +913,12 @@ if st.session_state.get('validated'):
         f'- Totale afstand: **{total_distance} km**'
     )
 
-    with st.expander('Dagelijkse KPI\'s'):
+    with st.expander('Dagelijkse KPIs'):
         for d_idx, (plastics, km, steps, logs) in enumerate(
             zip(res['plastic_by_day'], res['dist_by_day'], res['dist_steps'], res['step_logs']), start=1
         ):
-            st.markdown(f'**Dag {d_idx}** — plastic: {sum(plastics)}, afstand: {km} km, stappen: {len(steps)}')
-            st.dataframe(pd.DataFrame(logs))
+            st.markdown(f'**Dag {d_idx}** - plastic: {sum(plastics)}, afstand: {km} km, stappen: {len(steps)}')
+            st.dataframe(logs_to_df_nl(logs), use_container_width=True)
 
     # Stable display from stored bytes
     st.image(res['png_bytes'], caption='Laatste kaart met volledige route', use_column_width=True)
