@@ -13,7 +13,7 @@ import pandas as pd
 import seaborn as sns
 import streamlit as st
 
-full = True  # Full version with all features.
+full = False  # Full version with all features.
 
 # ---------------------------------------------------------------------
 # Types (no "from typing import ..." to respect your preference)
@@ -515,7 +515,8 @@ def create_excel_report_download(
     step_logs_all_days: list[list[dict]],
     plastic_by_day: list[list[int]],
     distance_by_day_km: list[int],
-    distance_by_day_steps: list[list[int]]
+    distance_by_day_steps: list[list[int]],
+    file_name_sufix: str = ""
 ) -> None:
     """
     Create a download button for an Excel report:
@@ -570,7 +571,7 @@ def create_excel_report_download(
     st.download_button(
         label='Download volledige rapportage (Excel)',
         data=buffer,
-        file_name='route_rapportage.xlsx',
+        file_name=f'route_rapportage_{file_name_sufix}.xlsx',
         mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 
@@ -590,8 +591,8 @@ default_max_distance = 50
 full: bool = st.checkbox(
     'Full mode',
     value=True,
-    help=f'Uit: gebruik standaardwaarden ({default_start_col_letter}{default_start_row_label}, {default_start_dir}, max_afstand={default_max_distance}), max_dagen={default_max_days}.'
-)
+    help=f'Uit: gebruik standaardwaarden ({default_start_col_letter}{default_start_row_label}, {default_start_dir}, {default_max_distance}, {default_max_days}).'
+) if full else full
 
 st.markdown(
     "Gebruik dit hulpmiddel om je route te controleren:\n"
@@ -601,6 +602,17 @@ st.markdown(
     "**Belangrijk:** Elke dag start in dezelfde cel als waar de vorige dag eindigde, "
     "en de eerste stap moet binnen 45 graden liggen van de eindrichting van de vorige dag."
 )
+
+# Kies de juiste tijdzone (automatisch CET/CEST)
+tz = pytz.timezone("Europe/Amsterdam")
+
+# Huidige datum en tijd in die tijdzone
+nu = datetime.now(tz)
+
+# Toon in Streamlit
+st.write("📅 Datum:", nu.strftime("%Y-%m-%d"))
+st.write("⏰ Tijd in Nederland:", nu.strftime("%H:%M:%S %Z"))
+file_name_sufix = nu.strftime("%Y%m%d_%H%M%S")
 
 col_labels = make_excel_labels(GRID.shape[1])
 row_labels = [str(i + 1) for i in range(GRID.shape[0])]
@@ -629,17 +641,6 @@ else:
     max_distance = default_max_distance
 
 collect_start = True
-
-# Kies de juiste tijdzone (automatisch CET/CEST)
-tz = pytz.timezone("Europe/Amsterdam")
-
-# Huidige datum en tijd in die tijdzone
-nu = datetime.now(tz)
-
-# Toon in Streamlit
-st.write("📅 Datum:", nu.strftime("%Y-%m-%d"))
-st.write("⏰ Tijd (CET/CEST):", nu.strftime("%H:%M:%S %Z"))
-st.write("⏰ Tijd (CET/CEST):", nu.strftime("%Y%m%d_%H%M%S_%Z"))
 
 st.markdown(
     f"""
@@ -725,7 +726,7 @@ if st.button("Valideer en visualiseer"):
         start_dir, plastic_by_day, dist_steps
     )
     st.pyplot(fig, clear_figure=True)
-    pdf_filename = f"route_{start_cell_excel}.pdf"
+    pdf_filename = f"route_{file_name_sufix}.pdf"
     st.download_button("Download als PDF", pdf_bytes, pdf_filename, "application/pdf")
 
     # Excel download
