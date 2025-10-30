@@ -566,16 +566,6 @@ st.markdown(
     "en de eerste stap moet binnen 45 graden liggen van de eindrichting van de vorige dag."
 )
 
-# Example route (Excel mode)
-example = (
-    "T11:U11,V10:Y10\n"
-    "Y10,Z11:Z13,AA14\n"
-    "AA14:AA17\n"
-    "AA17,AB18,AC19\n"
-    "AC19,AC20"
-)
-path_str = st.text_area("Voer de route in:", example, height=160)
-
 col_labels = make_excel_labels(GRID.shape[1])
 row_labels = [str(i + 1) for i in range(GRID.shape[0])]
 
@@ -610,6 +600,25 @@ else:
     max_distance = default_max_distance
 
 collect_start = True
+
+st.markdown(
+    f"""
+    De route moet beginnen in **{start_col_letter}{start_row_label}**, 
+    in de richting **{start_dir} ±45°**.  
+    De route mag uit maximaal **{max_days} dagen** bestaan (één per regel in het invoerveld).  
+    Elke dag mag maximaal **{max_distance} km** afleggen.
+    """
+)
+
+# Example route (Excel mode)
+example = (
+    "T11:U11,V10:Y10\n"
+    "Y10,Z11:Z13,AA14\n"
+    "AA14:AA17\n"
+    "AA17,AB18,AC19\n"
+    "AC19,AC20"
+)
+path_str = st.text_area("Voer de route in:", example, height=160)
 
 if st.button("Valideer en visualiseer"):
     try:
