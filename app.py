@@ -601,6 +601,15 @@ else:
 
 collect_start = True
 
+from datetime import datetime
+
+# Huidige tijd ophalen
+nu = datetime.now()
+
+# Weergeven in Streamlit
+st.write("De huidige tijd is:", nu.strftime("%H:%M:%S"))
+
+
 st.markdown(
     f"""
     De route moet beginnen in **{start_col_letter}{start_row_label}**, 
