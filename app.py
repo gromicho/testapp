@@ -24,6 +24,15 @@ def init_state() -> None:
 
 init_state()
 
+def figure_to_png_bytes(fig: plt.Figure) -> bytes:
+    """
+    Render a Matplotlib Figure to PNG bytes.
+    """
+    buf = BytesIO()
+    fig.savefig(buf, format='png', dpi=200, bbox_inches='tight', pad_inches=0)
+    buf.seek(0)
+    return buf.read()
+
 # ---------------------------------------------------------------------
 # Types (no "from typing import ..." to respect your preference)
 # ---------------------------------------------------------------------
@@ -599,7 +608,7 @@ default_max_distance = 50
 # Top-level mode switch
 full: bool = st.checkbox(
     'Full mode',
-    value=True,
+    value=False,
     help=f'Uit: gebruik standaardwaarden ({default_start_col_letter}{default_start_row_label}, {default_start_dir}, {default_max_distance}, {default_max_days}).'
 )
 
@@ -716,6 +725,8 @@ if st.button('Valideer en visualiseer'):
         GRID, coords_paths, (int(start_y), int(start_x)),
         start_dir, plastic_by_day, dist_steps
     )
+    png_bytes = figure_to_png_bytes(fig)
+    plt.close(fig)  # release figure memory
 
     st.session_state['results'] = {
         'messages': msgs,
@@ -726,6 +737,7 @@ if st.button('Valideer en visualiseer'):
         'dist_steps': dist_steps,
         'step_logs': step_logs,
         'pdf_bytes': pdf_bytes,
+        'png_bytes': png_bytes,
         'pdf_filename': f'route_{file_name_sufix}.pdf'
     }
     st.session_state['validated'] = True
@@ -733,28 +745,11 @@ if st.button('Valideer en visualiseer'):
 # Render results if present, even after rerun (e.g., after a download)
 if st.session_state.get('validated'):
     res = st.session_state['results']
-    st.success('\n'.join(res['messages']))
 
-    total_plastic = sum(sum(p) for p in res['plastic_by_day'])
-    total_distance = sum(sum(d) for d in res['dist_steps'])
-    st.markdown(
-        f"### KPI overzicht\n"
-        f"- Startcel: **{res['start_cell_excel']}**\n"
-        f"- Dagen: {len(res['coords_paths'])}\n"
-        f"- Totaal plastic: **{total_plastic}**\n"
-        f"- Totale afstand: **{total_distance} km**"
-    )
+    # Toon afbeelding uit bytes (blijft bestaan na rerun)
+    st.image(res['png_bytes'], caption='Laatste kaart met volledige route', use_column_width=True)
 
-    with st.expander("Dagelijkse KPI's"):
-        for d_idx, (plastics, km, steps, logs) in enumerate(
-            zip(res['plastic_by_day'], res['dist_by_day'], res['dist_steps'], res['step_logs']), start=1
-        ):
-            st.markdown(f"**Dag {d_idx}** — plastic: {sum(plastics)}, afstand: {km} km, stappen: {len(steps)}")
-            st.dataframe(pd.DataFrame(logs))
-
-    # Show figure and download buttons; these survive reruns because data lives in session_state
-    st.pyplot(plt.gcf(), clear_figure=False)  # figure already created in draw_last_frame
-
+    # Downloads
     st.download_button(
         'Download als PDF',
         res['pdf_bytes'],
