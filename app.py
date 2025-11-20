@@ -780,6 +780,42 @@ def create_excel_report_download(
         mime='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
 
+
+# ---------------------------------------------------------------------
+# Submission helper (nieuw)
+# ---------------------------------------------------------------------
+def render_submission_panel(route_text: str) -> None:
+    """
+    Render submission instructions and copyable route text after successful validation.
+
+    Parameters
+    ----------
+    route_text : str
+        The raw route input as entered by the user.
+    """
+    st.markdown(
+        (
+            'Ben je tevreden met je oplossing? '
+            'Stuur deze dan in via het formulier om je aanmelding af te ronden.'
+        )
+    )
+    st.link_button(
+        'Open het inzendformulier',
+        'https://uvaforms.formstack.com/forms/business_analytics_data_challenge',
+        type='primary'
+    )
+
+    if not route_text.strip():
+        return
+
+    st.markdown(
+        'Je gevalideerde route staat hieronder. '
+        'Gebruik de kopieerknop rechtsboven in het blok om de tekst '
+        'naar het formulier te kopieren.'
+    )
+    st.code(route_text, language='text')
+
+
 # ---------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------
@@ -931,6 +967,7 @@ if st.button('Valideer en visualiseer'):
         'pdf_filename': f'route_{file_name_suffix}.pdf',
         'start_dir': start_dir
     }
+    st.session_state['route_text'] = path_str
     st.session_state['validated'] = True
 
 # Render results if present, even after rerun (e.g., after a download)
@@ -982,3 +1019,8 @@ if st.session_state.get('validated'):
         res['dist_steps'],
         file_name_suffix=file_name_suffix
     )
+
+    st.markdown('---')
+    st.markdown('### Stap 3: stuur je oplossing in')
+    route_text_final = str(st.session_state.get('route_text', ''))
+    render_submission_panel(route_text_final)
