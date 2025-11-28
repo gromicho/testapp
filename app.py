@@ -1050,6 +1050,6 @@ if st.session_state.get('validated'):
     )
 
     st.markdown('---')
-    st.markdown('### Stap 3: stuur je oplossing in')
+    st.markdown('### Tevreden? Stuur je oplossing nu in!')
     route_text_final = str(st.session_state.get('route_text', ''))
     render_submission_panel(route_text_final)
