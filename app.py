@@ -819,13 +819,42 @@ def render_submission_panel(route_text: str) -> None:
 # ---------------------------------------------------------------------
 # Streamlit UI
 # ---------------------------------------------------------------------
-st.title('Validatie en Visualisatie van Routes - The Ocean Cleanup Challenge')
 
-# Timestamp suffix for filenames (Europe/Amsterdam via zoneinfo)
+# Timestamp and deadline (Europe/Amsterdam via zoneinfo)
 tz = ZoneInfo('Europe/Amsterdam')
 now_nl = datetime.now(tz)
-file_name_suffix = now_nl.strftime('%Y%m%d_%H%M%S')
 
+deadline = datetime(2025, 12, 15, 23, 59, tzinfo=tz)
+delta = deadline - now_nl
+
+st.markdown('### Countdown tot de inzenddeadline (15 december 2025, 23:59 uur CEST)')
+
+if delta.total_seconds() > 0:
+    days = delta.days
+    hours, rem = divmod(delta.seconds, 3600)
+    minutes, seconds = divmod(rem, 60)
+    st.info(
+        f'Nog {days} dagen, {hours} uur, {minutes} minuten en '
+        f'{seconds} seconden tot de deadline.'
+    )
+else:
+    st.warning(
+        'De inzenddeadline (15 december 2025, 23:59 uur CEST) is verstreken.'
+    )
+
+st.warning(
+    'Vergeet niet: **valideren** is niet hetzelfde als **meedoen**!  '
+    'Je doet mee door je oplossing in te sturen via '
+    '[dit formulier](https://uvaforms.formstack.com/forms/business_analytics_data_challenge).  '
+    'Je hoeft niet te wachten tot het laatste moment. '
+    'Als je nu je eerste oplossing stuurt, kun je deze zo vaak als je wilt '
+    'nog verbeteren tot aan de deadline!'
+)
+
+st.title('Validatie en Visualisatie van Routes - The Ocean Cleanup Challenge')
+
+# Timestamp suffix for filenames
+file_name_suffix = now_nl.strftime('%Y%m%d_%H%M%S')
 # Defaults per brief
 default_start_col_letter = 'T'
 default_start_row_label = '11'
